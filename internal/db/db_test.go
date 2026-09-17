@@ -1,6 +1,8 @@
 package db
 
 import (
+	"errors"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -177,5 +179,78 @@ FROM sessions WHERE ended_at >= ?`,
 				t.Errorf("query %q: no index used (EXPLAIN QUERY PLAN shows full table scan)", tc.name)
 			}
 		})
+	}
+}
+
+func TestAnnotationsCRUD(t *testing.T) {
+	conn, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	a, err := InsertAnnotation(conn, Annotation{
+		At:    "2026-06-01T00:00:00Z",
+		Title: "Started optimization experiment",
+		Note:  "Baseline period ends today",
+		Kind:  "experiment-start",
+	})
+	if err != nil {
+		t.Fatalf("InsertAnnotation: %v", err)
+	}
+	if a.ID == 0 || a.CreatedAt == "" {
+		t.Errorf("expected id and created_at populated: %+v", a)
+	}
+	if a.Kind != "experiment-start" {
+		t.Errorf("Kind round-trip mismatch: %q", a.Kind)
+	}
+
+	// Default kind when omitted.
+	b, err := InsertAnnotation(conn, Annotation{At: "2026-05-15T00:00:00Z", Title: "Baseline begins"})
+	if err != nil {
+		t.Fatalf("InsertAnnotation 2: %v", err)
+	}
+	if b.Kind != "event" {
+		t.Errorf("default kind = %q, want %q", b.Kind, "event")
+	}
+
+	// Filtered list: from-only should drop the older row.
+	got, err := ListAnnotations(conn, "2026-06-01T00:00:00Z", "")
+	if err != nil {
+		t.Fatalf("ListAnnotations: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != a.ID {
+		t.Errorf("from filter unexpected result: %+v", got)
+	}
+
+	// Full list should be sorted ascending by `at`.
+	all, err := ListAnnotations(conn, "", "")
+	if err != nil {
+		t.Fatalf("ListAnnotations all: %v", err)
+	}
+	if len(all) != 2 || all[0].ID != b.ID || all[1].ID != a.ID {
+		t.Errorf("list order wrong: %+v", all)
+	}
+
+	// Update.
+	a.Title = "Started optimization (v2)"
+	a.Note = "Switched primary model to Haiku"
+	updated, err := UpdateAnnotation(conn, a)
+	if err != nil {
+		t.Fatalf("UpdateAnnotation: %v", err)
+	}
+	if updated.Title != a.Title || updated.Note != a.Note {
+		t.Errorf("update did not persist: %+v", updated)
+	}
+
+	// Delete.
+	if err := DeleteAnnotation(conn, a.ID); err != nil {
+		t.Fatalf("DeleteAnnotation: %v", err)
+	}
+	if err := DeleteAnnotation(conn, a.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("second DeleteAnnotation = %v, want sql.ErrNoRows", err)
+	}
+	if _, err := UpdateAnnotation(conn, a); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("UpdateAnnotation on deleted row = %v, want sql.ErrNoRows", err)
 	}
 }

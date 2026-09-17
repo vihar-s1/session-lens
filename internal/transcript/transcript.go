@@ -23,6 +23,24 @@ type Summary struct {
 	Turns            int
 	StartedAt        time.Time
 	EndedAt          time.Time
+	// TurnEvents is the per-assistant-message usage series, ordered by
+	// appearance in the transcript. Populated alongside the aggregate fields.
+	// Empty for transcripts with no assistant usage entries.
+	TurnEvents []TurnEvent
+}
+
+// TurnEvent is one assistant message's usage + timestamp + cost. The Idx
+// reflects appearance order (0-based) within the transcript; combined with
+// the parent session id it gives a stable PK for idempotent re-ingestion.
+type TurnEvent struct {
+	Idx              int
+	EndedAt          time.Time
+	Model            string
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	CostUSD          float64
 }
 
 // rawLine is the minimal subset of a transcript JSONL line we care about.
@@ -93,10 +111,34 @@ func Parse(r io.Reader) (*Summary, error) {
 			// Clamp each field to 0 before accumulating; negative token values
 			// from a malformed or adversarial transcript must not corrupt the
 			// running sums or the downstream cost calculation.
-			s.InputTokens += clampTokens(rl.Message.Usage.InputTokens)
-			s.OutputTokens += clampTokens(rl.Message.Usage.OutputTokens)
-			s.CacheReadTokens += clampTokens(rl.Message.Usage.CacheReadInputTokens)
-			s.CacheWriteTokens += clampTokens(rl.Message.Usage.CacheCreationInputTokens)
+			in := clampTokens(rl.Message.Usage.InputTokens)
+			out := clampTokens(rl.Message.Usage.OutputTokens)
+			cr := clampTokens(rl.Message.Usage.CacheReadInputTokens)
+			cw := clampTokens(rl.Message.Usage.CacheCreationInputTokens)
+			s.InputTokens += in
+			s.OutputTokens += out
+			s.CacheReadTokens += cr
+			s.CacheWriteTokens += cw
+			// Per-turn row — timestamp falls back to the session's running
+			// EndedAt if this line is missing one (rare but seen on truncated
+			// transcripts). Cost is computed per-turn using the turn's model
+			// so mixed-model sessions price each turn correctly.
+			turnEnd := s.EndedAt
+			if rl.Timestamp != "" {
+				if t, err := time.Parse(time.RFC3339Nano, rl.Timestamp); err == nil {
+					turnEnd = t
+				}
+			}
+			s.TurnEvents = append(s.TurnEvents, TurnEvent{
+				Idx:              len(s.TurnEvents),
+				EndedAt:          turnEnd.UTC(),
+				Model:            rl.Message.Model,
+				InputTokens:      in,
+				OutputTokens:     out,
+				CacheReadTokens:  cr,
+				CacheWriteTokens: cw,
+				CostUSD:          ComputeCost(rl.Message.Model, in, out, cr, cw),
+			})
 		}
 	}
 	if err := scanner.Err(); err != nil {

@@ -42,18 +42,32 @@ type hookInput struct {
 
 // sessionEvent is the payload POSTed to the server.
 type sessionEvent struct {
-	ID               string  `json:"id"`
-	ProjectPath      string  `json:"project_path"`
-	StartedAt        string  `json:"started_at"`
+	ID               string             `json:"id"`
+	ProjectPath      string             `json:"project_path"`
+	StartedAt        string             `json:"started_at"`
+	EndedAt          string             `json:"ended_at"`
+	InputTokens      int64              `json:"input_tokens"`
+	OutputTokens     int64              `json:"output_tokens"`
+	CacheReadTokens  int64              `json:"cache_read_tokens"`
+	CacheWriteTokens int64              `json:"cache_write_tokens"`
+	TotalCostUSD     float64            `json:"total_cost_usd"`
+	Model            string             `json:"model"`
+	Turns            int                `json:"turns"`
+	RawPayload       string             `json:"raw_payload,omitempty"`
+	TurnEvents       []sessionTurnEvent `json:"turn_events,omitempty"`
+}
+
+// sessionTurnEvent mirrors server.SessionTurnEvent on the wire. Decoupled
+// type so this binary stays free of the server-internal import cycle.
+type sessionTurnEvent struct {
+	Idx              int     `json:"idx"`
 	EndedAt          string  `json:"ended_at"`
+	Model            string  `json:"model"`
 	InputTokens      int64   `json:"input_tokens"`
 	OutputTokens     int64   `json:"output_tokens"`
 	CacheReadTokens  int64   `json:"cache_read_tokens"`
 	CacheWriteTokens int64   `json:"cache_write_tokens"`
-	TotalCostUSD     float64 `json:"total_cost_usd"`
-	Model            string  `json:"model"`
-	Turns            int     `json:"turns"`
-	RawPayload       string  `json:"raw_payload,omitempty"`
+	CostUSD          float64 `json:"cost_usd"`
 }
 
 const (
@@ -131,6 +145,20 @@ func run(client httpPoster) {
 		startedISO = startedAt.UTC().Format(time.RFC3339)
 	}
 
+	turnEvents := make([]sessionTurnEvent, 0, len(summary.TurnEvents))
+	for _, t := range summary.TurnEvents {
+		turnEvents = append(turnEvents, sessionTurnEvent{
+			Idx:              t.Idx,
+			EndedAt:          t.EndedAt.UTC().Format(time.RFC3339),
+			Model:            t.Model,
+			InputTokens:      t.InputTokens,
+			OutputTokens:     t.OutputTokens,
+			CacheReadTokens:  t.CacheReadTokens,
+			CacheWriteTokens: t.CacheWriteTokens,
+			CostUSD:          t.CostUSD,
+		})
+	}
+
 	ev := sessionEvent{
 		ID:               in.SessionID,
 		ProjectPath:      in.CWD,
@@ -144,6 +172,7 @@ func run(client httpPoster) {
 		Model:            summary.Model,
 		Turns:            summary.Turns,
 		RawPayload:       string(raw),
+		TurnEvents:       turnEvents,
 	}
 
 	body, err := json.Marshal(ev)

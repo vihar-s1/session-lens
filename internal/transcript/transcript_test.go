@@ -15,11 +15,21 @@ func TestPricingFor(t *testing.T) {
 		model string
 		want  Pricing
 	}{
-		{"claude-opus-4-7", pricingOpus},
+		// Opus 4.5+ → current $5/$25 tier.
+		{"claude-opus-4-7", pricingOpusCurrent},
+		{"claude-opus-4-8", pricingOpusCurrent},
+		{"claude-opus-4-5-20260101", pricingOpusCurrent},
+		{"claude-opus-5-0", pricingOpusCurrent},
+		// Opus 4.1 and earlier → legacy $15/$75 tier.
+		{"claude-opus-4-1", pricingOpusLegacy},
+		{"CLAUDE-OPUS-4", pricingOpusLegacy},
+		{"claude-opus-3", pricingOpusLegacy},
+		// Other families.
 		{"claude-3-5-haiku-20241022", pricingHaiku},
 		{"claude-sonnet-4-5", pricingSonnet},
+		{"claude-fable-5", pricingFable},
+		{"claude-mythos-5", pricingFable}, // Mythos shares the Fable rate card
 		{"some-unknown-model", pricingSonnet},
-		{"CLAUDE-OPUS-4", pricingOpus},
 		{"", pricingSonnet},
 	}
 	for _, c := range cases {
@@ -32,15 +42,21 @@ func TestPricingFor(t *testing.T) {
 
 func TestComputeCost(t *testing.T) {
 	cases := []struct {
-		name                                                   string
-		model                                                  string
-		in, out, cr, cw                                        int64
-		want                                                   float64
+		name            string
+		model           string
+		in, out, cr, cw int64
+		want            float64
 	}{
-		{"opus 1M each", "claude-opus-4", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 15 + 75 + 1.5 + 18.75},
+		// Current opus tier — Opus 4.5+ dropped to $5/$25/$0.50/$6.25.
+		{"opus 4.7 1M each", "claude-opus-4-7", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 5 + 25 + 0.5 + 6.25},
+		// Legacy opus tier — Opus 4.1 stayed at $15/$75/$1.50/$18.75.
+		{"opus 4.1 1M each", "claude-opus-4-1", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 15 + 75 + 1.5 + 18.75},
+		// Sonnet, Haiku unchanged.
 		{"sonnet 1M each", "claude-sonnet-4", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 3 + 15 + 0.3 + 3.75},
 		{"haiku 1M each", "claude-haiku-3", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 1 + 5 + 0.1 + 1.25},
-		{"zero", "claude-opus", 0, 0, 0, 0, 0},
+		// Fable — new tier at 5x sonnet.
+		{"fable 1M each", "claude-fable-5", 1_000_000, 1_000_000, 1_000_000, 1_000_000, 10 + 50 + 1 + 12.5},
+		{"zero", "claude-opus-4-7", 0, 0, 0, 0, 0},
 		{"sonnet partial", "sonnet", 500_000, 100_000, 0, 0, (500_000*3 + 100_000*15) / 1_000_000.0},
 	}
 	for _, c := range cases {
