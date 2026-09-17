@@ -369,6 +369,65 @@ func New(cfg Config) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, res)
 	})
+
+	// /v1/repricing runs a model-swap what-if against historical data.
+	// Query params:
+	//   from, to        RFC3339 or YYYY-MM-DD (required)
+	//   target          target model id (required)
+	//   kind            "flat" | "family" | "conditional" (default "flat")
+	//   from_family     substring to match on original model (family/conditional)
+	//   max_cost_usd    conditional: only swap sessions <= this cost
+	//   max_turns       conditional: only swap sessions <= this turn count
+	// Mock mode is intentionally NOT handled — the point of repricing is
+	// counterfactual reasoning about *your* real spend, not a synthetic
+	// dataset that would give misleading dollar deltas.
+	mux.HandleFunc("GET /v1/repricing", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		from, err := parseCompareDate(q.Get("from"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("from: %w", err))
+			return
+		}
+		to, err := parseCompareDate(q.Get("to"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("to: %w", err))
+			return
+		}
+		target := strings.TrimSpace(q.Get("target"))
+		if target == "" {
+			writeError(w, http.StatusBadRequest, errors.New("target is required"))
+			return
+		}
+		kind := strings.TrimSpace(q.Get("kind"))
+		if kind == "" {
+			kind = "flat"
+		}
+		rule := stats.SwapRule{
+			Kind:       kind,
+			FromFamily: strings.TrimSpace(q.Get("from_family")),
+			Target:     target,
+		}
+		if v := q.Get("max_cost_usd"); v != "" {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("max_cost_usd: %w", err))
+				return
+			}
+			rule.MaxCostUSD = f
+		}
+		rule.MaxTurns = intParam(r, "max_turns", 0)
+		if cfg.DB == nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("database unavailable"))
+			return
+		}
+		res, err := stats.Reprice(cfg.DB, from, to, rule)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+	})
+
 	// Annotations CRUD — markers placed on the session-lens timeline.
 	// The dashboard uses these to overlay vertical lines on the daily charts
 	// (so a "started optimizing on X" marker shows up visually against
