@@ -66,6 +66,12 @@ func dashboardOpenURL() string {
 // spiking session, which is acceptable noise vs the cost of a schema migration.
 var spikeNotified sync.Map
 
+// burstNotified is the sibling dedupe for burst alerts. Kept separate
+// from spikeNotified so the two signals can fire independently on the
+// same session — a session can both burst (short-window burn rate) and
+// spike (total-cost anomaly), and each is worth one alert.
+var burstNotified sync.Map
+
 // Config holds the runtime knobs for the server.
 type Config struct {
 	DB            *sql.DB
@@ -464,6 +470,36 @@ func New(cfg Config) http.Handler {
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	// GET /v1/sessions/{id}/burst — the peak $/min window inside one
+	// session. Returns 204 when the session has too few turns or its
+	// peak sits below the absolute floor (no burst worth surfacing);
+	// 404 when the session id is unknown.
+	mux.HandleFunc("GET /v1/sessions/{id}/burst", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if id == "" {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("missing session id"))
+			return
+		}
+		if _, err := db.GetSession(cfg.DB, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, errors.New("session not found"))
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		burst, err := stats.DetectBurstForSession(cfg.DB, id, stats.DefaultBurstConfig())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if burst == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, http.StatusOK, burst)
+	})
+
 	mux.HandleFunc("GET /v1/forecast", func(w http.ResponseWriter, r *http.Request) {
 		budgetUSD := apiRateAlertUSD(cfg.DB)
 		if isMock(r, mode) {
@@ -787,6 +823,53 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, cfg Config, hub
 				notifier.Notify("session-lens: cost spike", msg, openURL)
 			}
 		}(ev.TotalCostUSD, spikeCfg.SessionRatio, spikeCfg.SessionWindowN)
+	}
+
+	// Burst detector — orthogonal to the total-cost spike above. Answers
+	// "is this session burning dollars fast RIGHT NOW inside a small
+	// window" using the per-turn cost timeline. Requires turn data; the
+	// detector returns nil (silent) for sessions that don't fire, so we
+	// only notify on genuine bursts. Ran async so a slow DB scan on the
+	// baseline query can't stall the hook.
+	if cfg.DB != nil && len(ev.TurnEvents) >= 2 {
+		conn := cfg.DB
+		sessionID := ev.ID
+		projectShort := shortProjectName(ev.ProjectPath)
+		go func() {
+			burst, err := stats.DetectBurstForSession(conn, sessionID, stats.DefaultBurstConfig())
+			if err != nil {
+				log.Printf("burst detect %s: %v", sessionID, err)
+				return
+			}
+			if burst == nil {
+				return
+			}
+			if _, already := burstNotified.LoadOrStore(sessionID, true); already {
+				return
+			}
+			idPrefix := sessionID
+			if len(idPrefix) > 8 {
+				idPrefix = idPrefix[:8]
+			}
+			header := projectShort
+			if header == "" {
+				header = "unknown project"
+			}
+			// Message shape: dollars-per-minute is the headline; ratio
+			// vs baseline is the "why this is unusual" secondary. When
+			// no baseline yet, print the absolute number alone —
+			// "6.7x baseline (0)" is meaningless.
+			var msg string
+			if burst.BaselineP75 > 0 {
+				msg = fmt.Sprintf("[%s · %s] $%.2f/min burst — %.1fx your typical peak ($%.2f/min)",
+					header, idPrefix, burst.USDPerMin, burst.Ratio, burst.BaselineP75)
+			} else {
+				msg = fmt.Sprintf("[%s · %s] $%.2f/min burst over a %d-min window",
+					header, idPrefix, burst.USDPerMin, stats.DefaultBurstConfig().WindowMinutes)
+			}
+			openURL := fmt.Sprintf("%s/#session/%s", dashboardOpenURL(), url.PathEscape(sessionID))
+			notifier.Notify("session-lens: burn-rate burst", msg, openURL)
+		}()
 	}
 
 	status := http.StatusOK
