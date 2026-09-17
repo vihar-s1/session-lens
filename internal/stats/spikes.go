@@ -30,9 +30,14 @@ type Spike struct {
 	Severity  string    `json:"severity"` // low | medium | high
 }
 
-// SpikeConfig tunes the detection thresholds.
+// SpikeConfig tunes the detection thresholds. SessionWindowN is interpreted
+// as DAYS (the baseline is the median session cost over that many calendar
+// days preceding each session — previously this field meant "prior N
+// sessions", which gave very different results for high- vs low-volume
+// users). The notification and dashboard panel share this baseline so the
+// two signals stay in lockstep.
 type SpikeConfig struct {
-	SessionWindowN int     // how many recent sessions form the baseline
+	SessionWindowN int     // baseline = median session cost over the prior N days
 	SessionRatio   float64 // multiplier above median to count as a spike
 	TrendRatio     float64 // day vs 7-day median multiplier
 }
@@ -88,17 +93,26 @@ func detectSessionSpikes(sessions []SessionRecord, cfg SpikeConfig) []Spike {
 	if len(sessions) < 3 {
 		return nil
 	}
+	windowDur := time.Duration(cfg.SessionWindowN) * 24 * time.Hour
 	out := make([]Spike, 0)
 	for i, s := range sessions {
-		// Baseline = median cost of the prior N sessions (or all earlier ones).
-		start := i - cfg.SessionWindowN
-		if start < 0 {
-			start = 0
+		// Baseline = P75 cost of sessions ended in [s.EndedAt - windowDur,
+		// s.EndedAt). Same shape as BaselineP75CostUSD but evaluated against
+		// each session's contemporaneous history so an old spike is judged
+		// against the cost regime that existed at the time, not today's.
+		earliest := s.EndedAt.Add(-windowDur)
+		lo := i - 1
+		for lo >= 0 && !sessions[lo].EndedAt.Before(earliest) {
+			lo--
 		}
-		if start == i {
+		// Window is sessions[lo+1 : i] — strictly older than this session and
+		// no older than `windowDur` before it. Need at least 3 samples or the
+		// P75 is too jittery to flag against.
+		window := sessions[lo+1 : i]
+		if len(window) < 3 {
 			continue
 		}
-		baseline := medianCost(sessions[start:i])
+		baseline := p75Cost(window)
 		if baseline <= 0 {
 			continue
 		}
@@ -163,6 +177,22 @@ func medianCost(rows []SessionRecord) float64 {
 	return medianFloat(values)
 }
 
+// p75Cost returns the 75th percentile of session costs in `rows`. We use P75
+// rather than median for session baselines because Claude Code generates a
+// long tail of micro-sessions (<$0.50) that drag the median to noise levels —
+// e.g. a $1 median triggered "spike" alerts for $5 sessions that are actually
+// routine. P75 anchors the baseline on the upper half of meaningful sessions.
+func p75Cost(rows []SessionRecord) float64 {
+	if len(rows) == 0 {
+		return 0
+	}
+	values := make([]float64, len(rows))
+	for i, r := range rows {
+		values[i] = r.CostUSD
+	}
+	return percentileFloat(values, 0.75)
+}
+
 func medianTokens(rows []DayRecord) float64 {
 	if len(rows) == 0 {
 		return 0
@@ -186,6 +216,35 @@ func medianFloat(values []float64) float64 {
 		return sorted[n/2]
 	}
 	return (sorted[n/2-1] + sorted[n/2]) / 2.0
+}
+
+// percentileFloat returns the p-th percentile (0..1) using linear
+// interpolation between the two nearest ranks. Matches numpy's default
+// `linear` method so results align with any external analysis.
+func percentileFloat(values []float64, p float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	if p < 0 {
+		p = 0
+	} else if p > 1 {
+		p = 1
+	}
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	if n == 1 {
+		return sorted[0]
+	}
+	rank := float64(n-1) * p
+	lo := int(rank)
+	hi := lo + 1
+	if hi >= n {
+		return sorted[lo]
+	}
+	frac := rank - float64(lo)
+	return sorted[lo] + frac*(sorted[hi]-sorted[lo])
 }
 
 func severityFor(ratio, threshold float64) string {
@@ -274,23 +333,44 @@ ORDER BY day ASC
 	return DetectSpikes(sessions, days, cfg), nil
 }
 
-// RollingAvgCostUSD returns the average total_cost_usd of sessions that ended
-// in the 7 days prior to today (i.e. excluding today). Returns 0 if there are
-// no qualifying rows.
-func RollingAvgCostUSD(conn *sql.DB) (float64, error) {
+// BaselineP75CostUSD returns the 75th percentile total_cost_usd of sessions
+// that ended in the `days` calendar days prior to today (today itself is
+// excluded so the baseline is stable across the day). Returns 0 if there are
+// fewer than 3 qualifying rows — too small a sample to flag against. Used by
+// both the live spike notification and the dashboard Spikes panel so they
+// share one definition of "normal". P75 (not median) keeps the baseline
+// honest when the distribution is dominated by sub-dollar micro-sessions.
+func BaselineP75CostUSD(conn *sql.DB, days int) (float64, error) {
+	if days <= 0 {
+		days = 20
+	}
 	today := time.Now().UTC().Truncate(24 * time.Hour)
-	sevenDaysAgo := today.AddDate(0, 0, -7)
+	windowStart := today.AddDate(0, 0, -days)
 
 	const q = `
-SELECT COALESCE(AVG(total_cost_usd), 0)
+SELECT total_cost_usd
 FROM sessions
 WHERE ended_at >= ?
   AND ended_at < ?
 `
-	var avg float64
-	err := conn.QueryRow(q, sevenDaysAgo.Format(time.RFC3339), today.Format(time.RFC3339)).Scan(&avg)
+	rows, err := conn.Query(q, windowStart.Format(time.RFC3339), today.Format(time.RFC3339))
 	if err != nil {
-		return 0, fmt.Errorf("rolling avg cost: %w", err)
+		return 0, fmt.Errorf("baseline median: %w", err)
 	}
-	return avg, nil
+	defer rows.Close()
+	var values []float64
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return 0, fmt.Errorf("scan baseline row: %w", err)
+		}
+		values = append(values, v)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iter baseline rows: %w", err)
+	}
+	if len(values) < 3 {
+		return 0, nil
+	}
+	return percentileFloat(values, 0.75), nil
 }

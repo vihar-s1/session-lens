@@ -10,12 +10,23 @@ import (
 
 func TestModelFamily(t *testing.T) {
 	cases := map[string]string{
-		"claude-opus-4-7":            "opus",
-		"CLAUDE-OPUS-3":              "opus",
-		"claude-sonnet-4-5":          "sonnet",
-		"claude-3-5-haiku-20241022":  "haiku",
-		"foo-bar":                    "other",
-		"":                           "other",
+		"claude-opus-4-7":           "opus",
+		"CLAUDE-OPUS-3":             "opus",
+		"claude-sonnet-4-5":         "sonnet",
+		"claude-3-5-haiku-20241022": "haiku",
+		// Curated new family — explicitly listed in KnownModelFamilies.
+		"claude-fable-1":          "fable",
+		"claude-fable-2-20260701": "fable",
+		// Dynamic recognition — a hypothetical brand-new Claude model that
+		// isn't in the curated list still gets its own bucket via the
+		// claude-<family>-<version> parser instead of collapsing to "other".
+		"claude-prose-1-0":           "prose",
+		"claude-4-2-nebula-20260501": "nebula",
+		"CLAUDE-Codex-3":             "codex",
+		// Non-Claude strings still go to "other".
+		"foo-bar": "other",
+		"":        "other",
+		"   ":     "other",
 	}
 	for in, want := range cases {
 		if got := ModelFamily(in); got != want {
@@ -97,7 +108,7 @@ func TestHourlyDBRoundTrip(t *testing.T) {
 	conn := openTestDB(t)
 	defer conn.Close()
 	seedByModel(t, conn)
-	out, err := Hourly(conn, 7)
+	out, err := Hourly(conn, 7, "", GranHour)
 	if err != nil {
 		t.Fatalf("Hourly: %v", err)
 	}
@@ -105,7 +116,7 @@ func TestHourlyDBRoundTrip(t *testing.T) {
 		t.Fatalf("expected at least one hourly bucket")
 	}
 	for _, b := range out {
-		if len(b.Bucket) != 13 { // "YYYY-MM-DD HH" = 13 chars
+		if len(b.Bucket) != 17 { // "YYYY-MM-DDTHH:00Z" = 17 chars
 			t.Errorf("unexpected bucket format %q", b.Bucket)
 		}
 	}

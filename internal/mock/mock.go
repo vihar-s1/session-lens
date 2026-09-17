@@ -221,9 +221,6 @@ func (d Dataset) Summary(planBudget float64) stats.Summary {
 	s.PlanBudgetUSD = planBudget
 	if planBudget > 0 {
 		s.PlanUtilisationPct = (s.TotalCostUSD / planBudget) * 100.0
-		if s.PlanUtilisationPct > 999.9 {
-			s.PlanUtilisationPct = 999.9
-		}
 	}
 	return s
 }
@@ -262,19 +259,27 @@ func (d Dataset) Daily(days int) []stats.Bucket {
 	return out
 }
 
-// Hourly bucket aggregation for the dataset.
-func (d Dataset) Hourly(days int) []stats.Bucket {
+// Hourly bucket aggregation for the dataset. project is optional; empty
+// string aggregates across all projects, non-empty filters by exact match.
+// Granularity controls bucket size — same semantics as stats.Hourly.
+func (d Dataset) Hourly(days int, project string, gran stats.Granularity) []stats.Bucket {
 	if days <= 0 {
 		days = 7
 	}
-	since := refNow.AddDate(0, 0, -days+1)
-	cutoff := time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, time.UTC)
+	if gran == "" {
+		gran = stats.GranHour
+	}
+	layout := granLayout(gran)
+	cutoff := refNow.Add(-time.Duration(days) * 24 * time.Hour)
 	buckets := map[string]*stats.Bucket{}
 	for _, s := range d.Sessions {
 		if s.EndedAt.Before(cutoff) {
 			continue
 		}
-		key := s.EndedAt.UTC().Format("2006-01-02 15")
+		if project != "" && s.ProjectPath != project {
+			continue
+		}
+		key := truncateForMock(s.EndedAt.UTC(), gran).Format(layout)
 		b, ok := buckets[key]
 		if !ok {
 			b = &stats.Bucket{Bucket: key}
@@ -293,7 +298,33 @@ func (d Dataset) Hourly(days int) []stats.Bucket {
 		out = append(out, *b)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Bucket < out[j].Bucket })
-	return out
+	return stats.FillTimeseriesGaps(out, cutoff, refNow, gran)
+}
+
+// granLayout / truncateForMock mirror the unexported helpers on
+// stats.Granularity so the mock bucketer produces identical keys.
+func granLayout(g stats.Granularity) string {
+	switch g {
+	case stats.Gran15m:
+		return "2006-01-02T15:04Z"
+	case stats.GranDay:
+		return "2006-01-02T00:00Z"
+	default:
+		return "2006-01-02T15:00Z"
+	}
+}
+
+func truncateForMock(t time.Time, g stats.Granularity) time.Time {
+	switch g {
+	case stats.Gran15m:
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), (t.Minute()/15)*15, 0, 0, time.UTC)
+	case stats.Gran6h:
+		return time.Date(t.Year(), t.Month(), t.Day(), (t.Hour()/6)*6, 0, 0, 0, time.UTC)
+	case stats.GranDay:
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	default:
+		return t.Truncate(time.Hour)
+	}
 }
 
 // Weekly bucket aggregation for the dataset.
@@ -363,13 +394,18 @@ func sqliteWeekKey(t time.Time) string {
 	return itoa(t.Year()) + "-W" + w
 }
 
-// Projects rollup for the dataset.
-func (d Dataset) Projects(limit int) []stats.Project {
+// Projects rollup for the dataset. If `since` is a zero time, the rollup
+// covers every session; otherwise it only counts sessions whose EndedAt is
+// on or after `since`.
+func (d Dataset) Projects(limit int, since time.Time) []stats.Project {
 	if limit <= 0 {
 		limit = 20
 	}
 	rows := map[string]*stats.Project{}
 	for _, s := range d.Sessions {
+		if !since.IsZero() && s.EndedAt.Before(since) {
+			continue
+		}
 		key := s.ProjectPath
 		if key == "" {
 			key = "(unknown)"
@@ -460,6 +496,42 @@ func (d Dataset) Forecast(budgetUSD float64) stats.Forecast {
 }
 
 // Spikes runs the detector against the dataset.
+// Annotations returns a small fixed list of mock annotations anchored to
+// refNow. They demonstrate the chart-overlay behavior and let the page list
+// render real-looking rows when the server is in mock mode. from/to use the
+// same inclusive `at` semantics as db.ListAnnotations.
+func (d Dataset) Annotations(from, to string) []db.Annotation {
+	all := []db.Annotation{
+		{
+			ID:        1,
+			At:        refNow.AddDate(0, 0, -10).UTC().Format(time.RFC3339),
+			Title:     "Started optimization experiment",
+			Note:      "Switched primary model to Haiku for routine edits",
+			Kind:      "experiment-start",
+			CreatedAt: refNow.AddDate(0, 0, -10).UTC().Format(time.RFC3339),
+		},
+		{
+			ID:        2,
+			At:        refNow.AddDate(0, 0, -5).UTC().Format(time.RFC3339),
+			Title:     "Enabled prompt caching",
+			Note:      "Expected: cache_read tokens up, billable input down",
+			Kind:      "event",
+			CreatedAt: refNow.AddDate(0, 0, -5).UTC().Format(time.RFC3339),
+		},
+	}
+	out := make([]db.Annotation, 0, len(all))
+	for _, a := range all {
+		if from != "" && a.At < from {
+			continue
+		}
+		if to != "" && a.At > to {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 func (d Dataset) Spikes(cfg stats.SpikeConfig) []stats.Spike {
 	sessions := make([]stats.SessionRecord, 0, len(d.Sessions))
 	for _, s := range d.Sessions {

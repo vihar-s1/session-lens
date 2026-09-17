@@ -20,6 +20,7 @@
       --m-opus: #f472b6;
       --m-sonnet: #7c8cff;
       --m-haiku: #4ade80;
+      --m-fable: #fbbf24;
       --m-other: #94a3b8;
     }
     * { box-sizing: border-box; }
@@ -29,7 +30,84 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
     }
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    /* No hard width cap — on a 4K or ultrawide there's no reason to
+       restrict content to 1200px and leave half the screen empty. The
+       horizontal padding scales with viewport width via clamp() so things
+       don't crash into the edge on big monitors. */
+    .wrap { max-width: 2400px; margin: 0 auto; padding: 24px clamp(24px, 3vw, 64px); }
+
+    /* dashboard-panels lays the main chart/table panels into a responsive
+       grid: single column up to ~1500px, two columns 1500-2200px, three
+       on a 4K monitor. Each panel keeps its natural height (align-items:
+       start), so a short Spikes list next to a tall chart doesn't get
+       stretched. .dashboard-full forces a panel to span all columns —
+       used for the recent-sessions table which needs horizontal room. */
+    .dashboard-panels {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(720px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .dashboard-panels > .panel { margin-bottom: 0; }
+    .dashboard-full { grid-column: 1 / -1; }
+
+    /* Segment-group label — sits above a .seg cluster so the row
+       "Bucket: [15m|1h|6h|1d]  Range: [1d|7d|30d]" doesn't read as one
+       ambiguous group with two "1d" buttons. */
+    .seg-cluster { display: flex; flex-direction: column; gap: 2px; }
+    .seg-cluster .seg-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding-left: 2px; }
+
+    /* Spikes panel layout — scatter chart on top, compact trend chips below.
+       Replaces the long flat list that was hard to scan at a glance and made
+       the dashboard row feel imbalanced when spikes piled up. */
+    .spikes-trend-row { margin-top: 16px; }
+    .spikes-trend-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .spikes-trend-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .trend-chip {
+      background: var(--bg); border-left: 3px solid var(--muted);
+      border-radius: 4px; padding: 4px 10px; font-size: 12px;
+      display: inline-flex; gap: 10px; align-items: baseline;
+    }
+    .trend-chip .day { color: var(--text); font-weight: 500; }
+    .trend-chip .meta { color: var(--muted); font-size: 11px; }
+    .spikes-legend {
+      display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--muted);
+    }
+    .spikes-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+    /* Sortable + filterable table affordances. Click a column header to
+       sort; click again to flip direction. The filter input matches against
+       every column's stringified value so the user doesn't have to remember
+       which column holds what. Both are client-side only — these tables
+       cap at a few hundred rows so the cost is invisible. */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--text); }
+    th.sort-asc::after { content: " ▲"; color: var(--accent); font-size: 10px; }
+    th.sort-desc::after { content: " ▼"; color: var(--accent); font-size: 10px; }
+    .table-filter {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 8px; font-size: 12px; width: 200px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .table-filter:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+    /* table-search is the more prominent variant used on Top Projects where
+       the user explicitly searches by project path. The leading 🔎 icon and
+       wider input make it obvious this is a search control, not just a
+       generic filter. Other tables keep .table-filter (compact). */
+    .table-search-wrap {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 10px; min-width: 260px;
+    }
+    .table-search-wrap:focus-within { outline: 1px solid var(--accent); border-color: var(--accent); }
+    .table-search-wrap .icon { color: var(--muted); font-size: 13px; line-height: 1; }
+    .table-search {
+      background: transparent; color: var(--text); border: 0; outline: 0;
+      flex: 1; font-size: 13px; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .table-search::placeholder { color: var(--muted); }
     header {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 16px;
@@ -57,6 +135,7 @@
       display: flex; align-items: center; gap: 8px;
     }
     .mock-banner::before { content: "•"; font-size: 24px; line-height: 0; }
+    .mock-banner[hidden] { display: none; }
 
     .grid {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
@@ -103,6 +182,8 @@
     .seg { display: flex; gap: 4px; }
     .seg button { background: var(--border); color: var(--muted); border: 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
     .seg button.active { background: var(--accent); color: var(--text); }
+    .unit { color: var(--muted); font-weight: 400; font-size: 11px; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+    .proj-select { background: var(--border); color: var(--muted); border: 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; max-width: 240px; }
     .export-btn { background: var(--border); color: var(--muted); border: 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
     .export-btn:hover { color: var(--text); }
 
@@ -119,6 +200,7 @@
     .swatch.opus { background: var(--m-opus); }
     .swatch.sonnet { background: var(--m-sonnet); }
     .swatch.haiku { background: var(--m-haiku); }
+    .swatch.fable { background: var(--m-fable); }
     .swatch.other { background: var(--m-other); }
 
     .spike-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
@@ -133,8 +215,6 @@
     /* Session drill-down */
     .session-link { color: var(--accent); text-decoration: none; font-family: monospace; font-size: 12px; }
     .session-link:hover { text-decoration: underline; }
-    #session-detail { display: none; }
-    #session-detail.visible { display: block; }
     .turn-summary { display: flex; gap: 24px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-bottom: 12px; }
     .turn-summary .dl { color: var(--muted); }
     .turn-summary .dv { color: var(--text); margin-left: 4px; }
@@ -151,6 +231,89 @@
     .back-btn { background: var(--border); color: var(--muted); border: 0; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; margin-bottom: 12px; }
     .back-btn:hover { color: var(--text); }
 
+    /* Page routing: every top-level view (dashboard, compare, annotations,
+       session-detail) carries .page. Exactly one is .active at a time, the
+       rest are hidden. The router (routeTo) flips the class — there's no
+       per-view visibility state anywhere else. */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Header nav tabs — Dashboard / Compare / Annotations. Distinct from
+       the utility icon buttons on the right (Settings/Mock/health) so it's
+       obvious these change *what you're looking at* rather than triggering
+       an action. */
+    .page-nav { display: flex; gap: 2px; margin-left: 24px; margin-right: auto; align-items: center; }
+    .nav-tab {
+      color: var(--muted); text-decoration: none; font-size: 13px;
+      padding: 6px 14px; border-radius: 6px; transition: color 0.15s, background 0.15s;
+    }
+    .nav-tab:hover { color: var(--text); background: rgba(124,140,255,0.08); }
+    .nav-tab.active { color: var(--text); background: rgba(124,140,255,0.18); font-weight: 500; }
+    .compare-range { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; margin-bottom: 16px; }
+    .compare-range fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+    .compare-range legend { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 6px; }
+    .compare-range fieldset.period-a legend { color: #f0a060; }
+    .compare-range fieldset.period-b legend { color: #5cd6c4; }
+    .compare-range .date-row { display: flex; gap: 8px; align-items: center; }
+    .compare-range .date-row label { color: var(--muted); font-size: 12px; min-width: 32px; }
+    .compare-range input[type="date"] { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; flex: 1; }
+    .compare-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .compare-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+    .compare-card .clabel { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+    .compare-card .values { display: flex; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; }
+    .compare-card .v-a { color: #f0a060; font-size: 15px; font-weight: 600; }
+    .compare-card .v-b { color: #5cd6c4; font-size: 18px; font-weight: 700; }
+    .compare-card .v-arrow { color: var(--muted); font-size: 12px; }
+    .compare-card .delta { font-size: 12px; margin-top: 4px; font-weight: 500; }
+    .delta-up { color: #ef4444; }   /* B is higher than A — typically a regression for cost/tokens */
+    .delta-down { color: #22c55e; } /* B is lower — usually an improvement */
+    .delta-flat { color: var(--muted); }
+    .compare-section-title { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px; }
+    .compare-section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0 8px; }
+    .compare-section-header .compare-section-title { margin: 0; }
+    .align-toggle { display: inline-flex; align-items: center; gap: 6px; }
+    .align-toggle .align-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .align-toggle .align-btn {
+      background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+      padding: 4px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;
+    }
+    .align-toggle .align-btn:hover { color: var(--text); }
+    .align-toggle .align-btn.active { background: var(--border); color: var(--text); }
+    .model-mix-row { display: grid; grid-template-columns: 140px 1fr 80px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .model-mix-row:last-child { border-bottom: 0; }
+    .model-mix-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .model-mix-bar .mm-a-wrap, .model-mix-bar .mm-b-wrap { background: var(--border); height: 10px; border-radius: 3px; overflow: hidden; }
+    .model-mix-bar .mm-a { background: #f0a060; height: 100%; }
+    .model-mix-bar .mm-b { background: #5cd6c4; height: 100%; }
+    .compare-empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
+
+    /* Annotations view — list + form for timeline markers. Visibility is
+       owned by the .page / .page.active rules at the top of this stylesheet. */
+    .ann-form { display: grid; grid-template-columns: 140px 1fr; gap: 10px 14px; align-items: center; margin: 8px 0 18px; max-width: 720px; }
+    .ann-form label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .ann-form input, .ann-form select, .ann-form textarea {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 10px; font-size: 13px; font-family: inherit; width: 100%;
+    }
+    .ann-form textarea { resize: vertical; min-height: 60px; }
+    .ann-form .ann-actions { grid-column: 2; display: flex; gap: 8px; align-items: center; }
+    .ann-form .ann-actions button { padding: 8px 14px; border-radius: 6px; border: 0; cursor: pointer; font-size: 13px; }
+    .ann-form .ann-actions .btn-primary { background: var(--accent); color: var(--text); }
+    .ann-form .ann-actions .ann-feedback { color: var(--muted); font-size: 12px; }
+    .ann-list { border-top: 1px solid var(--border); }
+    .ann-row { display: grid; grid-template-columns: 130px 110px 1fr auto; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); align-items: start; }
+    .ann-row .ann-when { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; }
+    .ann-row .ann-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px; align-self: start; width: max-content; }
+    .ann-row .ann-title { color: var(--text); font-weight: 500; }
+    .ann-row .ann-note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .ann-row .ann-del { background: rgba(248,113,113,0.18); color: var(--bad); border: 0; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .ann-row .ann-del:hover { background: rgba(248,113,113,0.32); }
+    .ann-kind-experiment-start { background: rgba(244,114,182,0.18); color: #f472b6; }
+    .ann-kind-experiment-end   { background: rgba(124,140,255,0.18); color: #7c8cff; }
+    .ann-kind-incident         { background: rgba(248,113,113,0.18); color: var(--bad); }
+    .ann-kind-event            { background: rgba(74,222,128,0.18); color: var(--good); }
+    .ann-empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
+
     /* SSE live indicator */
     .live { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
@@ -159,13 +322,42 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+
+    /* Settings button + modal */
+    .icon-btn { background: var(--border); color: var(--muted); border: 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .icon-btn:hover { color: var(--text); }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px; z-index: 50; overflow-y: auto; }
+    .modal-backdrop[hidden] { display: none; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 100%; max-width: 520px; }
+    .modal h2 { margin: 0 0 16px 0; }
+    .modal .form-section { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+    .modal .form-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .modal .form-row label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .modal .form-row input, .modal .form-row select {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 10px; font-size: 13px; font-family: inherit; width: 100%;
+    }
+    .modal .form-row .helper { grid-column: 2; color: var(--muted); font-size: 11px; margin-top: -6px; }
+    .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .modal .modal-actions button { padding: 8px 14px; border-radius: 6px; border: 0; cursor: pointer; font-size: 13px; }
+    .modal .btn-primary { background: var(--accent); color: var(--text); }
+    .modal .btn-secondary { background: var(--border); color: var(--muted); }
+    .modal .btn-danger { background: rgba(248,113,113,0.18); color: var(--bad); }
+    .modal .save-feedback { color: var(--good); font-size: 12px; margin-right: auto; align-self: center; }
+    .modal .danger-zone { color: var(--bad); }
   </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1><span class="accent">session</span>-lens<span class="month" id="month"></span></h1>
+    <nav class="page-nav" id="page-nav">
+      <a class="nav-tab" data-route="#"            href="#">Dashboard</a>
+      <a class="nav-tab" data-route="#compare"     href="#compare" title="Compare two date ranges side-by-side">⇄ Compare</a>
+      <a class="nav-tab" data-route="#annotations" href="#annotations" title="Mark events on the timeline">📌 Annotations</a>
+    </nav>
     <div class="header-right">
+      <button class="icon-btn" id="settings-btn" title="Plan, alerts, spike tuning, clear data">⚙ Settings</button>
       <label class="toggle" id="mock-toggle" title="Render with deterministic mock data">
         <input type="checkbox" id="mock-input" />
         <span>Mock mode</span>
@@ -175,26 +367,117 @@
     </div>
   </header>
 
+  <!-- Settings modal -->
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <div class="modal">
+      <h2>Settings</h2>
+
+      <div class="form-row">
+        <label for="set-plan-tier">Plan tier</label>
+        <select id="set-plan-tier">
+          <option value="">— Choose —</option>
+          <option value="pro">Pro ($20/mo)</option>
+          <option value="max_5x">Max 5x ($100/mo)</option>
+          <option value="max_20x">Max 20x ($200/mo)</option>
+          <option value="payg">API / pay-as-you-go</option>
+          <option value="custom">Custom</option>
+        </select>
+        <div class="helper">Picks the headline budget. For Max/Pro, the “Plan utilisation” card tracks against your flat rate.</div>
+      </div>
+
+      <div class="form-row">
+        <label for="set-plan-budget">Plan budget (USD)</label>
+        <input type="number" id="set-plan-budget" step="1" min="0" />
+        <div class="helper">Drives the “Plan utilisation” card.</div>
+      </div>
+
+      <div class="form-row">
+        <label for="set-api-alert">API-rate alert (USD)</label>
+        <input type="number" id="set-api-alert" step="1" min="0" />
+        <div class="helper">Triggers the “Above API-rate threshold” pill. Set to 0 to hide entirely (recommended on flat-rate plans).</div>
+      </div>
+
+      <div class="form-section">
+        <h2 style="font-size:12px">Spike tuning</h2>
+        <div class="form-row">
+          <label for="set-spike-ratio">Session ratio</label>
+          <input type="number" id="set-spike-ratio" step="0.1" min="0.1" />
+          <div class="helper">A session is a spike if cost ≥ this × the baseline P75 cost (default 3.0). Drives both the dashboard panel and the macOS notification.</div>
+        </div>
+        <div class="form-row">
+          <label for="set-spike-window">Baseline window (days)</label>
+          <input type="number" id="set-spike-window" step="1" min="3" />
+          <div class="helper">Baseline = 75th-percentile session cost over the prior N days, excluding today (default 20). P75 stays honest when most sessions are sub-dollar micro-sessions.</div>
+        </div>
+        <div class="form-row">
+          <label for="set-trend-ratio">Trend ratio</label>
+          <input type="number" id="set-trend-ratio" step="0.1" min="0.1" />
+          <div class="helper">A day is a trend spike if tokens ≥ this × median of the prior 7 days (default 2.0).</div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 style="font-size:12px">Display</h2>
+        <div class="form-row">
+          <label for="set-tz-display">Timestamp timezone</label>
+          <select id="set-tz-display">
+            <option value="local">Local browser time</option>
+            <option value="utc">UTC</option>
+          </select>
+          <div class="helper">Affects chart axes, tooltips, and session timestamps. Storage stays UTC; this only changes how they’re displayed.</div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 style="font-size:12px" class="danger-zone">Clear historical data</h2>
+        <div class="form-row">
+          <label for="set-clear-from"><span id="set-clear-from-label">From</span></label>
+          <input type="datetime-local" id="set-clear-from" step="60" />
+        </div>
+        <div class="form-row">
+          <label for="set-clear-to"><span id="set-clear-to-label">To</span></label>
+          <input type="datetime-local" id="set-clear-to" step="60" />
+        </div>
+        <div class="form-row">
+          <label>&nbsp;</label>
+          <button class="btn-danger" id="set-clear-btn">Delete sessions in range</button>
+          <div class="helper">Leave both empty to delete every session. Time input matches the Display timezone above. You’ll be asked to confirm.</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <span class="save-feedback" id="set-feedback" hidden>Saved.</span>
+        <button class="btn-secondary" id="set-cancel">Close</button>
+        <button class="btn-primary" id="set-save">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div class="mock-banner" id="mock-banner" hidden>Mock mode — deterministic synthetic data, not real sessions</div>
+
+  <!-- Dashboard page — the default landing view. Wraps the summary cards,
+       forecast band, and the chart/table panels. Routing hides this when
+       the user navigates to Compare / Annotations / a session detail. -->
+  <section id="dashboard-view" class="page active">
 
   <div class="grid">
     <div class="card">
-      <div class="label">Tokens this month</div>
+      <div class="label">Tokens this month <span class="unit">(tokens)</span></div>
       <div class="value" id="tokens">—</div>
       <div class="sub" id="tokens-sub"></div>
     </div>
     <div class="card">
-      <div class="label">Cost</div>
+      <div class="label">Cost <span class="unit">(USD, MTD)</span></div>
       <div class="value" id="cost">—</div>
       <div class="sub" id="cost-sub"></div>
     </div>
     <div class="card">
-      <div class="label">Sessions</div>
+      <div class="label">Sessions <span class="unit">(count, MTD)</span></div>
       <div class="value" id="sessions">—</div>
       <div class="sub"></div>
     </div>
     <div class="card">
-      <div class="label">Plan utilisation</div>
+      <div class="label">Plan utilisation <span class="unit">(% of plan budget)</span></div>
       <div class="value" id="util">—</div>
       <div class="sub" id="util-sub"></div>
       <div class="progress"><div class="bar" id="util-bar" style="width:0%"></div></div>
@@ -205,18 +488,18 @@
   <div class="grid-5">
     <div class="forecast-card">
       <div class="fc-item">
-        <div class="label">Projected month total</div>
+        <div class="label">Projected month total <span class="unit">(USD)</span></div>
         <div class="value" id="fc-projected">—</div>
         <div class="sub" id="fc-sub-projected"></div>
         <div class="forecast-progress"><div class="bar" id="fc-bar" style="width:0%"></div></div>
       </div>
       <div class="fc-item">
-        <div class="label">Month to date</div>
+        <div class="label">Month to date <span class="unit">(USD)</span></div>
         <div class="value" id="fc-mtd">—</div>
         <div class="sub" id="fc-sub-mtd"></div>
       </div>
       <div class="fc-item">
-        <div class="label">Daily avg (last 7d)</div>
+        <div class="label">Daily avg, last 7d <span class="unit">(USD / day)</span></div>
         <div class="value" id="fc-daily-avg">—</div>
         <div class="sub" id="fc-sub-days"></div>
       </div>
@@ -227,13 +510,31 @@
     </div>
   </div>
 
+  <div class="dashboard-panels">
   <div class="panel">
     <div class="panel-head">
       <h2>Tokens by hour</h2>
-      <div class="seg" id="hourly-range">
-        <button data-days="1">1d</button>
-        <button data-days="7" class="active">7d</button>
-        <button data-days="30">30d</button>
+      <div style="display:flex; gap:8px; align-items:center">
+        <select id="hourly-project" class="proj-select" title="Filter by project">
+          <option value="">All projects</option>
+        </select>
+        <div class="seg-cluster">
+          <span class="seg-label">Bucket</span>
+          <div class="seg" id="hourly-gran" title="Bucket size — resets to a sensible default when you change the range">
+            <button data-gran="15m">15m</button>
+            <button data-gran="hour">1h</button>
+            <button data-gran="6h">6h</button>
+            <button data-gran="day">1d</button>
+          </div>
+        </div>
+        <div class="seg-cluster">
+          <span class="seg-label">Range</span>
+          <div class="seg" id="hourly-range">
+            <button data-days="1">1d</button>
+            <button data-days="7" class="active">7d</button>
+            <button data-days="30">30d</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="hourly-chart"></canvas></div>
@@ -241,10 +542,13 @@
   </div>
 
   <div class="panel">
-    <h2>Daily tokens by model</h2>
+    <div class="panel-head">
+      <h2>Daily tokens by model</h2>
+      <input type="text" class="table-filter" id="bymodel-filter" placeholder="Filter rows…" />
+    </div>
     <div class="chart-wrap tall"><canvas id="bymodel-chart"></canvas></div>
     <div class="empty" id="bymodel-empty" hidden>No model data yet.</div>
-    <table style="margin-top:12px">
+    <table style="margin-top:12px" id="bymodel-table">
       <thead>
         <tr>
           <th>Model</th>
@@ -262,7 +566,7 @@
     </table>
   </div>
 
-  <div class="panel">
+  <div class="panel dashboard-full">
     <div class="panel-head">
       <h2>Last 14 days</h2>
       <a class="export-btn" href="/v1/export/daily.csv" download>&#8675; Export daily CSV</a>
@@ -271,16 +575,29 @@
     <div class="empty" id="daily-empty" hidden>No sessions recorded yet.</div>
   </div>
 
-  <div class="panel">
+  <div class="panel dashboard-full">
     <h2>Spikes</h2>
     <div id="spikes-body">
       <div class="empty" id="spikes-empty">No spikes detected.</div>
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Top projects</h2>
-    <table>
+  <div class="panel dashboard-full">
+    <div class="panel-head">
+      <h2>Top projects</h2>
+      <div style="display:flex; gap:12px; align-items:center">
+        <div class="table-search-wrap">
+          <span class="icon">🔎</span>
+          <input type="text" class="table-search" id="projects-filter" placeholder="Search project paths…" />
+        </div>
+        <div class="seg" id="projects-range">
+          <button data-since="30d" class="active">30d</button>
+          <button data-since="90d">90d</button>
+          <button data-since="all">All</button>
+        </div>
+      </div>
+    </div>
+    <table id="projects-table">
       <thead>
         <tr>
           <th>Project</th>
@@ -295,12 +612,15 @@
     </table>
   </div>
 
-  <div class="panel">
+  <div class="panel dashboard-full">
     <div class="panel-head">
       <h2>Recent sessions</h2>
-      <a class="export-btn" href="/v1/export/sessions.csv" download>&#8675; Export sessions CSV</a>
+      <div style="display:flex; gap:8px; align-items:center">
+        <input type="text" class="table-filter" id="sessions-filter" placeholder="Filter sessions…" />
+        <a class="export-btn" href="/v1/export/sessions.csv" download>&#8675; Export sessions CSV</a>
+      </div>
     </div>
-    <table>
+    <table id="sessions-table">
       <thead>
         <tr>
           <th>ID</th>
@@ -316,14 +636,112 @@
       </tbody>
     </table>
   </div>
+  </div><!-- /.dashboard-panels -->
 
-  <!-- Session detail panel — shown when a session row is clicked -->
-  <div class="panel" id="session-detail">
+  </section><!-- /#dashboard-view -->
+
+  <!-- Session detail page — shown when a session row is clicked -->
+  <div class="panel page" id="session-detail">
     <button class="back-btn" id="detail-back">&#8592; Back</button>
     <h2 id="detail-title">Session</h2>
     <div class="detail-grid" id="detail-grid"></div>
     <div id="detail-cost-breakdown" style="margin-top:8px"></div>
     <div id="detail-turn-breakdown" style="margin-top:20px"></div>
+  </div>
+
+  <!-- Compare panel — toggled by #compare in the URL. Period A = baseline
+       (e.g. last month, pre-optimization). Period B = candidate (e.g. this
+       month, post-optimization). Defaults to "previous calendar month" vs
+       "current calendar month" — change the dates and click Apply for any
+       other range. Recomputes from raw sessions; no snapshot/cache. -->
+  <div class="panel page" id="compare-view">
+    <button class="back-btn" id="compare-back">&#8592; Back</button>
+    <h2>Compare periods</h2>
+    <div class="compare-range">
+      <fieldset class="period-a">
+        <legend>Period A — baseline</legend>
+        <div class="date-row">
+          <label for="cmp-a-from">From</label>
+          <input type="date" id="cmp-a-from" />
+        </div>
+        <div class="date-row" style="margin-top:6px">
+          <label for="cmp-a-to">To</label>
+          <input type="date" id="cmp-a-to" />
+        </div>
+      </fieldset>
+      <fieldset class="period-b">
+        <legend>Period B — candidate</legend>
+        <div class="date-row">
+          <label for="cmp-b-from">From</label>
+          <input type="date" id="cmp-b-from" />
+        </div>
+        <div class="date-row" style="margin-top:6px">
+          <label for="cmp-b-to">To</label>
+          <input type="date" id="cmp-b-to" />
+        </div>
+      </fieldset>
+      <button class="icon-btn" id="cmp-apply" style="background: var(--accent); color: var(--text); padding: 8px 14px">Apply</button>
+    </div>
+
+    <div id="cmp-status" class="compare-empty">Pick a range and click Apply.</div>
+    <div id="cmp-results" hidden>
+      <div class="compare-section-title">Headline (A → B, Δ%)</div>
+      <div class="compare-cards" id="cmp-cards"></div>
+
+      <div class="compare-section-header" id="cmp-daily-header">
+        <div class="compare-section-title" id="cmp-daily-title">Daily working tokens (aligned by day-of-period)</div>
+        <div class="align-toggle" id="cmp-align-toggle" hidden>
+          <span class="align-label">Align:</span>
+          <button type="button" class="align-btn active" data-align="period">Hour of period</button>
+          <button type="button" class="align-btn" data-align="clock">Hour of day (UTC)</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="cmp-daily-chart"></canvas></div>
+
+      <div class="compare-section-title">Model mix (cost share)</div>
+      <div id="cmp-model-mix"></div>
+    </div>
+  </div>
+
+  <!-- Annotations panel — toggled by #annotations in the URL. A simple
+       date / title / kind / note form on top, list of existing markers
+       below. Markers added here overlay as vertical lines on the daily
+       and by-model charts. -->
+  <div class="panel page" id="annotations-view">
+    <button class="back-btn" id="annotations-back">&#8592; Back</button>
+    <h2>Annotations</h2>
+    <p class="compare-empty" style="text-align:left; padding:0 0 12px 0">
+      Mark moments on your timeline — experiment starts, model switches, incidents.
+      Each marker overlays as a vertical line on the Last-14-days and Daily-by-model charts.
+    </p>
+
+    <div class="ann-form">
+      <label for="ann-date">Date</label>
+      <input type="date" id="ann-date" />
+
+      <label for="ann-kind">Kind</label>
+      <select id="ann-kind">
+        <option value="event">Event</option>
+        <option value="experiment-start">Experiment — start</option>
+        <option value="experiment-end">Experiment — end</option>
+        <option value="incident">Incident</option>
+      </select>
+
+      <label for="ann-title">Title</label>
+      <input type="text" id="ann-title" placeholder="e.g. Started optimization experiment" maxlength="120" />
+
+      <label for="ann-note">Note (optional)</label>
+      <textarea id="ann-note" placeholder="Free-form details — shown on hover and on this page" maxlength="500"></textarea>
+
+      <div class="ann-actions">
+        <button class="btn-primary" id="ann-save">Add marker</button>
+        <span class="ann-feedback" id="ann-feedback"></span>
+      </div>
+    </div>
+
+    <div class="ann-list" id="ann-list">
+      <div class="ann-empty" id="ann-empty">No annotations yet. Add one above.</div>
+    </div>
   </div>
 </div>
 
@@ -334,11 +752,64 @@ const fmt = {
   pct: (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "%",
 };
 
-const MODEL_COLOR = { opus: "#f472b6", sonnet: "#7c8cff", haiku: "#4ade80", other: "#94a3b8" };
-const MODEL_ORDER = ["opus", "sonnet", "haiku", "other"];
+// Curated palette. Keys are the family names ModelFamily() emits. When a
+// new Claude tier ships (e.g. "fable"), add an entry here to lock its
+// color; families that DON'T appear here still get a stable, distinct
+// color via modelColor() below — the dashboard adds no new hardcodes for
+// them, they just render with a hash-derived HSL.
+const MODEL_COLOR_KNOWN = {
+  opus:   "#f472b6",
+  sonnet: "#7c8cff",
+  haiku:  "#4ade80",
+  fable:  "#fbbf24",  // amber
+  other:  "#94a3b8",
+};
+
+// Display order for known families. Unknown families (recognised from
+// "claude-<family>-..." on the fly) get appended alphabetically after
+// these, so the layout is deterministic across refreshes even for
+// brand-new models we've never seen before.
+const MODEL_ORDER_KNOWN = ["opus", "sonnet", "haiku", "fable", "other"];
+
+// modelColor returns a stable color for any family name. Known families
+// get the curated palette entry; unknown ones get a hash-derived HSL so
+// two sessions of the same new model always share a color without
+// requiring code changes to add it.
+function modelColor(family) {
+  if (MODEL_COLOR_KNOWN[family]) return MODEL_COLOR_KNOWN[family];
+  // FNV-1a-lite over the family string. Deterministic; keeps hue stable
+  // across page loads so the same unknown model renders the same color.
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < family.length; i++) {
+    h ^= family.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  const hue = h % 360;
+  return `hsl(${hue}, 60%, 62%)`;
+}
+
+// orderedFamilies returns the input family set laid out as [known-in-
+// display-order..., ...unknown-alphabetical]. Used by chart datasets and
+// table renders so newcomers slot in after the curated tiers instead of
+// disappearing from the ordering.
+function orderedFamilies(families) {
+  const set = families instanceof Set ? families : new Set(families);
+  const known = MODEL_ORDER_KNOWN.filter(f => set.has(f));
+  const unknown = Array.from(set).filter(f => !MODEL_ORDER_KNOWN.includes(f)).sort();
+  return [...known, ...unknown];
+}
+
+// Legacy shim: some call-sites still read MODEL_COLOR[fam]. A Proxy makes
+// unknown families resolve to modelColor(fam) instead of returning
+// undefined, so nothing needs to change at the callsite.
+const MODEL_COLOR = new Proxy(MODEL_COLOR_KNOWN, {
+  get(target, prop) {
+    return target[prop] || modelColor(prop);
+  },
+});
 
 // Chart instances kept so we can destroy/replace cleanly on refresh.
-const charts = { hourly: null, byModel: null, daily: null };
+const charts = { hourly: null, byModel: null, daily: null, cmpDaily: null, spikes: null };
 
 async function getJSON(url) {
   const r = await fetch(url);
@@ -379,10 +850,17 @@ function applyMockBanner(on) {
 
 async function setMockMode(on) {
   await postJSON("/v1/mode", { mock: !!on });
-  localStorage.setItem("session-lens-mock", on ? "1" : "0");
   applyMockBanner(on);
-  hideSessionDetail();
-  window.location.hash = "";
+  // Route back to Dashboard — a detail/compare/annotations page may have
+  // been bound to data from the other mode. routeTo runs via hashchange.
+  if (window.location.hash) {
+    window.location.hash = "";
+  } else {
+    await routeTo("");
+  }
+  // Re-pull annotations so the chart overlay reflects the mock-or-real set
+  // before the chart redraw kicks off below.
+  await loadAnnotations();
   await loadAll();
 }
 
@@ -417,13 +895,15 @@ function renderDaily(buckets) {
   charts.daily = new Chart(canvas, {
     type: "bar",
     data: {
-      labels: recent.map(b => b.bucket),
+      labels: recent.map(b => fmtBucket(b.bucket, "day")),
       datasets: [
-        { label: "Input", data: recent.map(b => b.input_tokens), backgroundColor: "#7c8cff" },
-        { label: "Output", data: recent.map(b => b.output_tokens), backgroundColor: "#4ade80" },
+        { label: "Input",       data: recent.map(b => b.input_tokens),        backgroundColor: "#7c8cff" },
+        { label: "Output",      data: recent.map(b => b.output_tokens),       backgroundColor: "#4ade80" },
+        { label: "Cache read",  data: recent.map(b => b.cache_read_tokens),   backgroundColor: "#38bdf8" },
+        { label: "Cache write", data: recent.map(b => b.cache_write_tokens),  backgroundColor: "#a78bfa" },
       ],
     },
-    options: chartOpts({ stacked: true }),
+    options: chartOpts({ stacked: true, yTitle: "Tokens" }),
   });
 }
 
@@ -438,36 +918,25 @@ function renderByModel(resp) {
     empty.hidden = false; canvas.style.display = "none";
   } else {
     empty.hidden = true; canvas.style.display = "";
-    // Build a dataset per family present anywhere.
+    // Build a dataset per family present anywhere. orderedFamilies keeps
+    // curated families in their canonical order and appends unknown ones
+    // alphabetically after — a brand-new Claude model shows up as its own
+    // stack in the chart without any code change here.
     const families = new Set();
     daily.forEach(d => Object.keys(d.totals || {}).forEach(k => families.add(k)));
-    const ordered = MODEL_ORDER.filter(f => families.has(f));
+    const ordered = orderedFamilies(families);
     const datasets = ordered.map(f => ({
-      label: f, backgroundColor: MODEL_COLOR[f],
+      label: f, backgroundColor: modelColor(f),
       data: daily.map(d => Number((d.totals || {})[f] || 0)),
     }));
     charts.byModel = new Chart(canvas, {
       type: "bar",
-      data: { labels: daily.map(d => d.bucket), datasets },
-      options: chartOpts({ stacked: true }),
+      data: { labels: daily.map(d => fmtBucket(d.bucket, "day")), datasets },
+      options: chartOpts({ stacked: true, yTitle: "Tokens" }),
     });
   }
 
-  const body = document.getElementById("bymodel-body");
-  if (totals.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">No model totals.</td></tr>';
-    return;
-  }
-  body.innerHTML = totals.map(m => `
-    <tr>
-      <td><span class="swatch ${m.family}"></span>${escapeHtml(m.family)}</td>
-      <td class="num">${fmt.num(m.session_count)}</td>
-      <td class="num">${fmt.num(m.input_tokens)}</td>
-      <td class="num">${fmt.num(m.output_tokens)}</td>
-      <td class="num">${fmt.num(m.cache_read_tokens)} / ${fmt.num(m.cache_write_tokens)}</td>
-      <td class="num">${fmt.num(m.total_tokens)}</td>
-      <td class="num">${fmt.usd(m.total_cost_usd)}</td>
-    </tr>`).join("");
+  byModelTable.setData(totals);
 }
 
 function renderHourly(buckets) {
@@ -478,19 +947,38 @@ function renderHourly(buckets) {
     empty.hidden = false; canvas.style.display = "none"; return;
   }
   empty.hidden = true; canvas.style.display = "";
+  const gran = hourlyState.gran;
+  const fmtGran = granForBucketFmt(gran);
+  const label = granLabel(gran);
   charts.hourly = new Chart(canvas, {
     type: "line",
     data: {
-      labels: buckets.map(b => b.bucket),
+      labels: buckets.map(b => fmtBucket(b.bucket, fmtGran)),
       datasets: [{
-        label: "Tokens / hr",
+        label,
         data: buckets.map(b => b.total_tokens),
         borderColor: "#7c8cff",
         backgroundColor: "rgba(124,140,255,0.18)",
         tension: 0.25, fill: true, pointRadius: 0,
       }],
     },
-    options: chartOpts({ stacked: false }),
+    options: chartOpts({ stacked: false, yTitle: label }),
+  });
+}
+
+// syncHourlyGranButtons mirrors hourlyState.gran into the .active class on
+// the gran segment-control. Called whenever we mutate hourlyState.gran.
+function syncHourlyGranButtons() {
+  document.querySelectorAll("#hourly-gran button").forEach(b => {
+    b.classList.toggle("active", b.dataset.gran === hourlyState.gran);
+  });
+}
+
+// syncHourlyRangeButtons does the same for the range segment-control. Used
+// only on initial load — the click handler already toggles the right class.
+function syncHourlyRangeButtons() {
+  document.querySelectorAll("#hourly-range button").forEach(b => {
+    b.classList.toggle("active", Number(b.dataset.days) === hourlyState.days);
   });
 }
 
@@ -510,12 +998,12 @@ function renderSpikes(rows) {
     return `
       <div class="spike-row">
         <span class="pill ${escapeHtml(s.severity)}">${escapeHtml(s.severity)}</span>
-        <div class="spike-meta">${kind} · ${escapeHtml(s.timestamp)}${proj}</div>
+        <div class="spike-meta">${kind} · ${escapeHtml(fmtBucket(s.timestamp, s.kind === "session" ? "datetime" : "day"))}${proj}</div>
         <div class="spike-meta"><strong>${value}</strong> vs ${baseline}</div>
         <div class="spike-meta">${Number(s.ratio).toFixed(1)}x</div>
       </div>`;
   }).join("");
-  empty.hidden = true;
+  if (empty) empty.hidden = true;
 }
 
 function renderForecast(f) {
@@ -523,73 +1011,93 @@ function renderForecast(f) {
   document.getElementById("fc-mtd").textContent = fmt.usd(f.month_to_date_usd);
   document.getElementById("fc-daily-avg").textContent = fmt.usd(f.daily_avg_last_7d_usd);
   document.getElementById("fc-sub-days").textContent = f.days_remaining + " days remaining";
-  document.getElementById("fc-sub-mtd").textContent = "budget " + fmt.usd(f.budget_usd);
-  document.getElementById("fc-sub-projected").textContent = "of " + fmt.usd(f.budget_usd) + " budget";
 
   const bar = document.getElementById("fc-bar");
   const badge = document.getElementById("fc-badge");
   const overage = document.getElementById("fc-overage");
-  const pct = f.budget_usd > 0 ? Math.min(100, (f.projected_month_total_usd / f.budget_usd) * 100) : 0;
+  const projSub = document.getElementById("fc-sub-projected");
+  const mtdSub  = document.getElementById("fc-sub-mtd");
+
+  // budget_usd is the API-rate alert threshold (pay-as-you-go equivalent),
+  // NOT the user's actual plan bill. When 0 the user has disabled the alert
+  // (typical for flat-rate Pro/Max plans) — suppress the pill, the progress
+  // bar, and any wording that implies a real spend cap.
+  if (!f.budget_usd || f.budget_usd <= 0) {
+    bar.style.width = "0%";
+    bar.className = "bar ok";
+    badge.style.visibility = "hidden";
+    overage.textContent = "API-rate alert off";
+    projSub.textContent = "no API-rate alert configured";
+    mtdSub.textContent = "";
+    return;
+  }
+
+  badge.style.visibility = "visible";
+  projSub.textContent = "of " + fmt.usd(f.budget_usd) + " API-rate alert";
+  mtdSub.textContent = "API-rate alert " + fmt.usd(f.budget_usd);
+
+  const pct = Math.min(100, (f.projected_month_total_usd / f.budget_usd) * 100);
   bar.style.width = pct + "%";
 
   if (f.on_track) {
     bar.className = "bar ok";
     badge.className = "badge ok";
-    badge.textContent = "On track";
+    badge.textContent = "Within API-rate alert";
     overage.textContent = "";
   } else {
     bar.className = "bar over";
     badge.className = "badge over";
-    badge.textContent = "Over budget";
-    overage.textContent = "+" + fmt.usd(f.overage_estimate_usd) + " est. overage";
+    badge.textContent = "Above API-rate threshold";
+    overage.textContent = "+" + fmt.usd(f.overage_estimate_usd) + " over (PAYG-equivalent, not your plan bill)";
   }
 }
 
 function renderProjects(rows) {
-  const body = document.getElementById("projects-body");
-  if (!rows || rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="4" class="empty">No projects yet.</td></tr>';
-    return;
-  }
-  body.innerHTML = rows.map(r => `
-    <tr>
-      <td>${escapeHtml(r.project_path || "(unknown)")}</td>
-      <td class="num">${fmt.num(r.session_count)}</td>
-      <td class="num">${fmt.num(r.total_tokens)}</td>
-      <td class="num">${fmt.usd(r.total_cost_usd)}</td>
-    </tr>`).join("");
+  projectsTable.setData(rows || []);
 }
 
+// swatchHtml returns the inline <span> used next to a model/family name.
+// We always inline the background color from modelColor() so an unknown
+// family (whose class has no matching CSS rule) still gets a visible,
+// stable color. Known families still respect the CSS var too — the class
+// attribute stays so any existing selector keeps working.
+function swatchHtml(fam) {
+  const safeFam = escapeHtml(String(fam || "other"));
+  return `<span class="swatch ${safeFam}" style="background:${modelColor(fam)}"></span>`;
+}
+
+// Mirrors internal/stats/stats.go ModelFamily. Precedence:
+//   1) substring match against curated MODEL_ORDER_KNOWN (opus/sonnet/haiku/fable)
+//   2) parse a "claude-<family>-<version>[...]" id → family segment
+//   3) fallback "other"
+// Any brand-new Claude model auto-integrates as its own bucket without
+// requiring a JS change to the dashboard.
+const KNOWN_MODEL_FAMILIES_JS = ["opus", "sonnet", "haiku", "fable"];
 function modelFamily(model) {
-  const m = (model || "").toLowerCase();
-  if (m.includes("opus")) return "opus";
-  if (m.includes("sonnet")) return "sonnet";
-  if (m.includes("haiku")) return "haiku";
-  return "other";
+  const m = String(model || "").trim().toLowerCase();
+  if (!m) return "other";
+  for (const fam of KNOWN_MODEL_FAMILIES_JS) {
+    if (m.includes(fam)) return fam;
+  }
+  return parseClaudeFamily(m) || "other";
+}
+function parseClaudeFamily(m) {
+  if (!m.startsWith("claude-")) return "";
+  for (const seg of m.slice("claude-".length).split("-")) {
+    if (!seg) continue;
+    if (/^\d+$/.test(seg)) continue; // skip version/date segments
+    return seg;
+  }
+  return "";
 }
 
 function renderSessions(rows) {
-  const body = document.getElementById("sessions-body");
-  if (!rows || rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" class="empty">No sessions yet.</td></tr>';
-    return;
-  }
-  body.innerHTML = rows.map(r => {
-    const fam = modelFamily(r.model);
-    return `
-    <tr>
-      <td><a class="session-link" href="#session/${escapeHtml(r.id)}">${escapeHtml(r.id)}</a></td>
-      <td>${escapeHtml(r.project_path || "(unknown)")}</td>
-      <td><span class="swatch ${fam}"></span>${escapeHtml(r.model || "(unknown)")}</td>
-      <td>${escapeHtml((r.ended_at || "").replace("T", " ").replace("Z", " UTC"))}</td>
-      <td class="num">${fmt.num(r.turns)}</td>
-      <td class="num">${fmt.usd(r.total_cost_usd)}</td>
-    </tr>`;
-  }).join("");
+  sessionsTable.setData(rows || []);
 }
 
-function showSessionDetail(s) {
-  const panel = document.getElementById("session-detail");
+// renderSessionDetail populates the session-detail page's DOM. The router
+// owns whether the page is visible; this function just fills it in.
+function renderSessionDetail(s) {
   const title = document.getElementById("detail-title");
   const grid = document.getElementById("detail-grid");
   const breakdown = document.getElementById("detail-cost-breakdown");
@@ -601,10 +1109,10 @@ function showSessionDetail(s) {
 
   grid.innerHTML = [
     { l: "ID", v: s.id, mono: true },
-    { l: "Model", v: `<span class="swatch ${fam}"></span>${escapeHtml(s.model || "(unknown)")}` },
+    { l: "Model", v: `${swatchHtml(fam)}${escapeHtml(s.model || "(unknown)")}` },
     { l: "Project", v: escapeHtml(s.project_path || "(unknown)"), mono: true },
-    { l: "Started", v: escapeHtml((s.started_at || "—").replace("T", " ").replace("Z", " UTC")) },
-    { l: "Ended", v: escapeHtml((s.ended_at || "—").replace("T", " ").replace("Z", " UTC")) },
+    { l: "Started", v: escapeHtml(s.started_at ? fmtBucket(s.started_at, "datetime") : "—") },
+    { l: "Ended", v: escapeHtml(s.ended_at ? fmtBucket(s.ended_at, "datetime") : "—") },
     { l: "Turns", v: fmt.num(s.turns) },
     { l: "Total tokens", v: fmt.num(totalTokens) },
     { l: "Total cost", v: fmt.usd(s.total_cost_usd) },
@@ -632,9 +1140,6 @@ function showSessionDetail(s) {
 
   // Reset turn breakdown — populated async by loadTurnBreakdown.
   document.getElementById("detail-turn-breakdown").innerHTML = '<div class="empty">Loading per-turn breakdown…</div>';
-
-  panel.classList.add("visible");
-  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
   loadTurnBreakdown(s.id);
 }
@@ -675,7 +1180,7 @@ function renderTurnBreakdown(container, bd) {
 
   const modelSwitch = (bd.model_switch || []).map(m => {
     const fam = modelFamily(m);
-    return `<span class="swatch ${fam}"></span>${escapeHtml(m)}`;
+    return `${swatchHtml(fam)}${escapeHtml(m)}`;
   }).join(" → ");
 
   const duration = bd.duration_secs ? formatDuration(bd.duration_secs) : "—";
@@ -686,7 +1191,7 @@ function renderTurnBreakdown(container, bd) {
     return `
       <tr>
         <td class="num">${t.index + 1}</td>
-        <td><span class="swatch ${fam}"></span>${escapeHtml(t.model || "—")}</td>
+        <td>${swatchHtml(fam)}${escapeHtml(t.model || "—")}</td>
         <td>${(t.tools || []).map(escapeHtml).join(", ") || "—"}</td>
         <td class="num">${fmt.num(tokens)}</td>
         <td class="num">${fmt.usd(t.cost_usd)}</td>
@@ -724,31 +1229,544 @@ function formatDuration(secs) {
   return (secs/3600).toFixed(2) + "h";
 }
 
-function hideSessionDetail() {
-  document.getElementById("session-detail").classList.remove("visible");
+// ---------------- Compare view ----------------
+
+function ymd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-async function handleHashChange() {
-  const hash = window.location.hash;
-  const m = hash.match(/^#session\/(.+)$/);
-  if (!m) {
-    hideSessionDetail();
+// Compute the default A = previous calendar month, B = current calendar
+// month. Backend interprets YYYY-MM-DD as UTC midnight with [from, to)
+// semantics, so "to" is the FIRST day of the NEXT month (exclusive).
+function defaultComparePeriods() {
+  const now = new Date();
+  const curStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return {
+    aFrom: ymd(prevStart),
+    aTo: ymd(curStart),
+    bFrom: ymd(curStart),
+    bTo: ymd(nextStart),
+  };
+}
+
+function ensureCompareDefaults() {
+  const ids = ["cmp-a-from", "cmp-a-to", "cmp-b-from", "cmp-b-to"];
+  const anyEmpty = ids.some(id => !document.getElementById(id).value);
+  if (!anyEmpty) return;
+  const d = defaultComparePeriods();
+  document.getElementById("cmp-a-from").value = d.aFrom;
+  document.getElementById("cmp-a-to").value = d.aTo;
+  document.getElementById("cmp-b-from").value = d.bFrom;
+  document.getElementById("cmp-b-to").value = d.bTo;
+}
+
+
+// deltaPct returns the change from a → b as a percent. Returns null when a
+// is zero (undefined ratio). Caller formats and colors the result.
+function deltaPct(a, b) {
+  if (!isFinite(a) || a === 0) return null;
+  return ((b - a) / a) * 100;
+}
+
+function fmtDelta(pct, lowerIsBetter) {
+  if (pct === null) return `<span class="delta delta-flat">— (A was 0)</span>`;
+  const cls = Math.abs(pct) < 0.5 ? "delta-flat"
+    : (pct > 0) === !!lowerIsBetter ? "delta-up" : "delta-down";
+  const sign = pct > 0 ? "+" : "";
+  return `<span class="delta ${cls}">${sign}${pct.toFixed(1)}%</span>`;
+}
+
+// Compact human numbers for cards: 1.2k / 3.4M / 567 / 2.3B
+function compactNum(n) {
+  n = Number(n || 0);
+  if (Math.abs(n) >= 1e9) return (n/1e9).toFixed(2) + "B";
+  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(2) + "M";
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1) + "k";
+  return String(Math.round(n));
+}
+
+// Card definitions. lowerBetter flips delta color semantics — for cost &
+// tokens a *drop* is a win (green); for cache hit ratio we stay neutral.
+const COMPARE_CARDS = [
+  { key: "working_tokens",    label: "Working tokens (input+output)", fmt: compactNum,  lowerBetter: true  },
+  { key: "cost_usd",          label: "Cost (PAYG-equiv.)",            fmt: v => "$" + Number(v||0).toFixed(2), lowerBetter: true },
+  { key: "sessions",          label: "Sessions",                      fmt: compactNum,  lowerBetter: true  },
+  { key: "tokens_per_session",label: "Tokens / session",              fmt: compactNum,  lowerBetter: true  },
+  { key: "cost_per_session",  label: "Cost / session",                fmt: v => "$" + Number(v||0).toFixed(2), lowerBetter: true },
+  { key: "cache_hit_ratio",   label: "Cache hit ratio",               fmt: v => (Number(v||0) * 100).toFixed(1) + "%", lowerBetter: false },
+  { key: "cache_read_tokens", label: "Cache read tokens",             fmt: compactNum,  lowerBetter: true  },
+  { key: "total_tokens",      label: "Total tokens (all kinds)",      fmt: compactNum,  lowerBetter: true  },
+];
+
+function renderCompareCards(a, b) {
+  const root = document.getElementById("cmp-cards");
+  root.innerHTML = COMPARE_CARDS.map(c => {
+    const av = a[c.key], bv = b[c.key];
+    const pct = deltaPct(av, bv);
+    return `
+      <div class="compare-card">
+        <div class="clabel">${escapeHtml(c.label)}</div>
+        <div class="values">
+          <span class="v-a">${escapeHtml(c.fmt(av))}</span>
+          <span class="v-arrow">→</span>
+          <span class="v-b">${escapeHtml(c.fmt(bv))}</span>
+        </div>
+        ${fmtDelta(pct, c.lowerBetter)}
+      </div>`;
+  }).join("");
+}
+
+// Compare-chart alignment mode. Only meaningful when granularity is "hour":
+//   "period" — position i in each series is the i-th hour into that period
+//              (offset from the period's From). This is what showed A[9am+i]
+//              alongside B[2pm+i] earlier — good for "same elapsed time" diffs.
+//   "clock"  — bin into 24 hour-of-day slots (00..23 UTC). Both periods
+//              contribute to the same slot regardless of which calendar hour
+//              they landed on. Good for "same wall-clock hour" diffs.
+// Toggle is hidden when granularity is daily (nothing to switch between).
+let cmpAlignMode = "period";
+let lastCompareData = null;
+
+function renderCompareDaily(dailyA, dailyB, gran) {
+  destroyChart("cmpDaily");
+  const canvas = document.getElementById("cmp-daily-chart");
+  const title = document.getElementById("cmp-daily-title");
+  const alignToggle = document.getElementById("cmp-align-toggle");
+  if (!dailyA.length && !dailyB.length) {
+    canvas.style.display = "none";
+    if (alignToggle) alignToggle.hidden = true;
     return;
   }
-  const id = decodeURIComponent(m[1]);
-  const isMockNow = document.getElementById("mock-input").checked;
-  const qs = isMockNow ? "?mock=1" : "";
-  try {
-    const s = await getJSON("/v1/sessions/" + encodeURIComponent(id) + qs);
-    showSessionDetail(s);
-  } catch (e) {
-    console.error("session detail:", e);
-    hideSessionDetail();
+  canvas.style.display = "";
+  const isHour = gran === "hour";
+  if (alignToggle) alignToggle.hidden = !isHour;
+
+  let labels, dataA, dataB, titleText;
+  if (isHour && cmpAlignMode === "clock") {
+    // 24 fixed slots keyed by UTC hour. Any point whose bucket parses to that
+    // hour drops in — sum across if a period spans >24h and hits the same
+    // slot twice.
+    const binsA = new Array(24).fill(null);
+    const binsB = new Array(24).fill(null);
+    const drop = (bins, pts) => {
+      for (const p of pts) {
+        const h = hourFromPoint(p);
+        if (h < 0) continue;
+        bins[h] = (bins[h] || 0) + (p.working_tokens || 0);
+      }
+    };
+    drop(binsA, dailyA);
+    drop(binsB, dailyB);
+    labels = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0") + ":00");
+    dataA = binsA;
+    dataB = binsB;
+    titleText = "Hourly working tokens (aligned by hour-of-day, UTC)";
+  } else if (isHour) {
+    const nBuckets = Math.max(dailyA.length, dailyB.length);
+    const longer = dailyA.length >= dailyB.length ? dailyA : dailyB;
+    labels = Array.from({ length: nBuckets }, (_, i) => (longer[i] && longer[i].bucket) || `H${i + 1}`);
+    dataA = labels.map((_, i) => dailyA[i] ? dailyA[i].working_tokens : null);
+    dataB = labels.map((_, i) => dailyB[i] ? dailyB[i].working_tokens : null);
+    titleText = "Hourly working tokens (aligned by hour-of-period, UTC)";
+  } else {
+    const nBuckets = Math.max(dailyA.length, dailyB.length);
+    labels = Array.from({ length: nBuckets }, (_, i) => `Day ${i + 1}`);
+    dataA = labels.map((_, i) => dailyA[i] ? dailyA[i].working_tokens : null);
+    dataB = labels.map((_, i) => dailyB[i] ? dailyB[i].working_tokens : null);
+    titleText = "Daily working tokens (aligned by day-of-period)";
   }
+  if (title) title.textContent = titleText;
+
+  charts.cmpDaily = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "A · baseline",  data: dataA, borderColor: "#f0a060", backgroundColor: "rgba(240,160,96,0.15)", tension: 0.2, spanGaps: true },
+        { label: "B · candidate", data: dataB, borderColor: "#5cd6c4", backgroundColor: "rgba(92,214,196,0.15)", tension: 0.2, spanGaps: true },
+      ],
+    },
+    options: chartOpts({ stacked: false, yTitle: "Working tokens" }),
+  });
+}
+
+// hourFromPoint extracts the UTC hour (0-23) from a hourly DailyPoint. Prefers
+// bucket ("HH:MM") since it's the display-ready string; falls back to parsing
+// the RFC3339 date. Returns -1 if neither yields a valid hour.
+function hourFromPoint(p) {
+  if (!p) return -1;
+  if (p.bucket && /^\d{2}:\d{2}$/.test(p.bucket)) return parseInt(p.bucket.slice(0, 2), 10);
+  if (p.date) {
+    const m = /T(\d{2}):/.exec(p.date);
+    if (m) return parseInt(m[1], 10);
+  }
+  return -1;
+}
+
+function renderCompareModelMix(mixA, mixB) {
+  const root = document.getElementById("cmp-model-mix");
+  if (!mixA.length && !mixB.length) {
+    root.innerHTML = `<div class="compare-empty">No model data in either period.</div>`;
+    return;
+  }
+  const byModel = new Map();
+  for (const m of mixA) byModel.set(m.model, { a: m.share_pct, b: 0 });
+  for (const m of mixB) {
+    const entry = byModel.get(m.model) || { a: 0, b: 0 };
+    entry.b = m.share_pct;
+    byModel.set(m.model, entry);
+  }
+  const rows = Array.from(byModel.entries())
+    .sort((x, y) => (y[1].a + y[1].b) - (x[1].a + x[1].b))
+    .map(([model, v]) => `
+      <div class="model-mix-row">
+        <div style="color: var(--text); font-family: monospace; font-size: 12px">${escapeHtml(model || "unknown")}</div>
+        <div class="model-mix-bar">
+          <div class="mm-a-wrap" title="A: ${v.a.toFixed(1)}%"><div class="mm-a" style="width:${Math.min(100, v.a).toFixed(1)}%"></div></div>
+          <div class="mm-b-wrap" title="B: ${v.b.toFixed(1)}%"><div class="mm-b" style="width:${Math.min(100, v.b).toFixed(1)}%"></div></div>
+        </div>
+        <div style="color: var(--muted); font-size: 11px; text-align: right">
+          <span style="color: #f0a060">${v.a.toFixed(0)}%</span> → <span style="color: #5cd6c4">${v.b.toFixed(0)}%</span>
+        </div>
+      </div>`).join("");
+  root.innerHTML = rows;
+}
+
+async function loadCompare() {
+  ensureCompareDefaults();
+  const aFrom = document.getElementById("cmp-a-from").value;
+  const aTo   = document.getElementById("cmp-a-to").value;
+  const bFrom = document.getElementById("cmp-b-from").value;
+  const bTo   = document.getElementById("cmp-b-to").value;
+  const status = document.getElementById("cmp-status");
+  const results = document.getElementById("cmp-results");
+  if (!aFrom || !aTo || !bFrom || !bTo) {
+    status.hidden = false; status.textContent = "All four dates required."; results.hidden = true; return;
+  }
+  if (aFrom >= aTo || bFrom >= bTo) {
+    status.hidden = false; status.textContent = "Each range must have From < To."; results.hidden = true; return;
+  }
+  status.hidden = false; status.textContent = "Loading…"; results.hidden = true;
+  try {
+    const qs = `?a_from=${encodeURIComponent(aFrom)}&a_to=${encodeURIComponent(aTo)}&b_from=${encodeURIComponent(bFrom)}&b_to=${encodeURIComponent(bTo)}`;
+    const data = await getJSON("/v1/compare" + qs);
+    if (!data.a.sessions && !data.b.sessions) {
+      status.hidden = false; status.textContent = "No sessions in either period."; results.hidden = true; return;
+    }
+    status.hidden = true; results.hidden = false;
+    lastCompareData = data;
+    renderCompareCards(data.a, data.b);
+    renderCompareDaily(data.daily_a || [], data.daily_b || [], data.granularity || "day");
+    renderCompareModelMix(data.a.model_mix || [], data.b.model_mix || []);
+  } catch (e) {
+    console.error("compare:", e);
+    status.hidden = false; status.textContent = "Error: " + (e.message || e); results.hidden = true;
+  }
+}
+
+// Map of route key → { pageId, navMatch, onEnter }. The key is what
+// routeTo() takes; navMatch is the data-route attribute on the nav tab to
+// highlight (so a session-detail page still highlights "Dashboard" rather
+// than nothing). onEnter is the async hook the router runs after switching
+// pages — typically a data fetch.
+const ROUTES = {
+  dashboard:   { pageId: "dashboard-view",   navMatch: "#",            onEnter: null },
+  compare:     { pageId: "compare-view",     navMatch: "#compare",     onEnter: () => loadCompare() },
+  annotations: { pageId: "annotations-view", navMatch: "#annotations", onEnter: () => loadAnnotationsPage() },
+  session:     { pageId: "session-detail",   navMatch: "#",            onEnter: null }, // onEnter set inline below
+};
+const ALL_PAGE_IDS = ["dashboard-view", "session-detail", "compare-view", "annotations-view"];
+
+function setActivePage(pageId) {
+  for (const id of ALL_PAGE_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.classList.toggle("active", id === pageId);
+  }
+  document.documentElement.scrollTop = 0;
+}
+
+function setActiveNav(navMatch) {
+  document.querySelectorAll("#page-nav .nav-tab").forEach(el => {
+    el.classList.toggle("active", el.dataset.route === navMatch);
+  });
+}
+
+// routeTo is the only place that decides which page is visible. Anywhere
+// else that needs to navigate should mutate window.location.hash and let
+// the hashchange listener call back here — that way deep links, back/
+// forward, and in-app clicks all run through one code path.
+async function routeTo(hash) {
+  if (hash === "#compare") {
+    setActivePage(ROUTES.compare.pageId);
+    setActiveNav(ROUTES.compare.navMatch);
+    await ROUTES.compare.onEnter();
+    return;
+  }
+  if (hash === "#annotations") {
+    setActivePage(ROUTES.annotations.pageId);
+    setActiveNav(ROUTES.annotations.navMatch);
+    await ROUTES.annotations.onEnter();
+    return;
+  }
+  const m = (hash || "").match(/^#session\/(.+)$/);
+  if (m) {
+    const id = decodeURIComponent(m[1]);
+    const isMockNow = document.getElementById("mock-input").checked;
+    const qs = isMockNow ? "?mock=1" : "";
+    try {
+      const s = await getJSON("/v1/sessions/" + encodeURIComponent(id) + qs);
+      setActivePage(ROUTES.session.pageId);
+      setActiveNav(ROUTES.session.navMatch);
+      renderSessionDetail(s);
+    } catch (e) {
+      console.error("session detail:", e);
+      // Fall back to dashboard rather than leaving a stale or empty page.
+      window.location.hash = "";
+    }
+    return;
+  }
+  // Default: dashboard.
+  setActivePage(ROUTES.dashboard.pageId);
+  setActiveNav(ROUTES.dashboard.navMatch);
+}
+
+// Backwards-compatible alias for any existing call sites.
+async function handleHashChange() { await routeTo(window.location.hash); }
+
+// --- Annotations: state, rendering, persistence ----------------------------
+//
+// Cached client-side and refreshed on dashboard load + after add/delete. The
+// Chart.js overlay plugin reads this list directly so the daily charts pick
+// up new markers without needing a re-render dance.
+const annotationsState = { items: [], loaded: false };
+
+const ANN_KIND_LABEL = {
+  "event":             "Event",
+  "experiment-start":  "Exp. start",
+  "experiment-end":    "Exp. end",
+  "incident":          "Incident",
+};
+// Stroke colors for the chart overlay. Matches the CSS pill colors so the
+// page list and the chart agree visually.
+const ANN_KIND_COLOR = {
+  "experiment-start":  "#f472b6",
+  "experiment-end":    "#7c8cff",
+  "incident":          "#f87171",
+  "event":             "#4ade80",
+};
+
+function annotationKindClass(k) {
+  return ANN_KIND_LABEL[k] ? "ann-kind-" + k : "ann-kind-event";
+}
+function annotationColor(a) {
+  return a.color || ANN_KIND_COLOR[a.kind] || ANN_KIND_COLOR.event;
+}
+
+async function loadAnnotations() {
+  try {
+    const isMockNow = document.getElementById("mock-input").checked;
+    const qs = isMockNow ? "?mock=1" : "";
+    const rows = await getJSON("/v1/annotations" + qs);
+    annotationsState.items = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    console.error("loadAnnotations:", e);
+    annotationsState.items = [];
+  }
+  annotationsState.loaded = true;
+}
+
+// Re-renders the page list. Called by both the loadAnnotationsPage entry
+// point and by the create/delete handlers.
+function renderAnnotationsList() {
+  const list = document.getElementById("ann-list");
+  const empty = document.getElementById("ann-empty");
+  const items = annotationsState.items;
+  if (!items.length) {
+    list.innerHTML = "";
+    list.appendChild(empty);
+    empty.hidden = false;
+    return;
+  }
+  // Newest first on the page (chart overlay uses ascending order; the page
+  // wants the most recent marker at the top for quick edit/delete).
+  const sorted = [...items].sort((x, y) => (x.at < y.at ? 1 : -1));
+  list.innerHTML = sorted.map(a => {
+    const kindLabel = ANN_KIND_LABEL[a.kind] || a.kind;
+    const noteRow = a.note ? `<div class="ann-note">${escapeHtml(a.note)}</div>` : "";
+    return `
+      <div class="ann-row" data-id="${a.id}">
+        <div class="ann-when">${escapeHtml(fmtBucket(a.at, "day"))}</div>
+        <span class="ann-kind ${annotationKindClass(a.kind)}">${escapeHtml(kindLabel)}</span>
+        <div>
+          <div class="ann-title">${escapeHtml(a.title)}</div>
+          ${noteRow}
+        </div>
+        <button class="ann-del" data-id="${a.id}">Delete</button>
+      </div>`;
+  }).join("");
+}
+
+async function loadAnnotationsPage() {
+  await loadAnnotations();
+  renderAnnotationsList();
+  // Pre-fill the date input with today so adding a "now" marker is one click.
+  const dateEl = document.getElementById("ann-date");
+  if (!dateEl.value) {
+    const now = new Date();
+    const iso = now.toISOString().slice(0, 10);
+    dateEl.value = iso;
+  }
+  // Refresh the daily/by-model charts so newly-loaded annotations overlay
+  // immediately when the user navigates away from this page.
+  refreshAnnotationOverlay();
+}
+
+// In mock mode mutations stay client-side only — the seed dataset is
+// regenerated by the server every restart, and the real DB doesn't have
+// rows with the mock ids, so a real DELETE would 404. Same logic applies
+// to POST: persisting a "mock" annotation to the real DB would silently
+// pollute it. Mutations affect annotationsState directly and revert on
+// the next mock-mode reload, which matches the rest of mock-mode UX.
+function inMockMode() { return document.getElementById("mock-input").checked; }
+
+async function saveAnnotation() {
+  const feedback = document.getElementById("ann-feedback");
+  const date  = document.getElementById("ann-date").value.trim();
+  const kind  = document.getElementById("ann-kind").value;
+  const title = document.getElementById("ann-title").value.trim();
+  const note  = document.getElementById("ann-note").value.trim();
+  if (!date || !title) {
+    feedback.textContent = "Date and title required."; return;
+  }
+  feedback.textContent = "Saving…";
+  try {
+    let created;
+    if (inMockMode()) {
+      // Synthesize a row with a locally-unique id. Negative ids can't
+      // collide with the server's AUTOINCREMENT-assigned positives.
+      const nextId = Math.min(0, ...annotationsState.items.map(a => Number(a.id) || 0)) - 1;
+      created = {
+        id: nextId,
+        at: new Date(date + "T00:00:00Z").toISOString(),
+        title, note, kind: kind || "event",
+        created_at: new Date().toISOString(),
+      };
+    } else {
+      created = await postJSON("/v1/annotations", { at: date, title, note, kind });
+    }
+    annotationsState.items.push(created);
+    document.getElementById("ann-title").value = "";
+    document.getElementById("ann-note").value = "";
+    renderAnnotationsList();
+    refreshAnnotationOverlay();
+    feedback.textContent = inMockMode() ? "Saved (mock — won't persist)." : "Saved.";
+    setTimeout(() => { feedback.textContent = ""; }, 1800);
+  } catch (e) {
+    console.error("saveAnnotation:", e);
+    feedback.textContent = "Error: " + (e.message || e);
+  }
+}
+
+async function deleteAnnotation(id) {
+  // Remove from state up-front; on a real-DB failure we re-pull to restore.
+  const before = annotationsState.items;
+  annotationsState.items = before.filter(a => String(a.id) !== String(id));
+  renderAnnotationsList();
+  refreshAnnotationOverlay();
+
+  if (inMockMode()) return; // client-side only in mock mode
+
+  try {
+    const r = await fetch("/v1/annotations/" + encodeURIComponent(id), { method: "DELETE" });
+    if (!r.ok) throw new Error("DELETE -> " + r.status);
+  } catch (e) {
+    console.error("deleteAnnotation:", e);
+    annotationsState.items = before;
+    renderAnnotationsList();
+    refreshAnnotationOverlay();
+    alert("Couldn't delete: " + (e.message || e));
+  }
+}
+
+// refreshAnnotationOverlay forces the daily + by-model charts to redraw so
+// the annotation plugin re-reads annotationsState. Cheaper than rebuilding
+// the charts from scratch.
+function refreshAnnotationOverlay() {
+  if (charts.daily) charts.daily.update("none");
+  if (charts.byModel) charts.byModel.update("none");
+}
+
+// Chart.js plugin that draws vertical line markers for any annotations
+// whose `at` date matches a label in the chart's category axis. Labels in
+// these charts are formatted via fmtBucket(b, "day") → "MMM D" so we map
+// each annotation's day-key to that same string and compare. Marker label
+// is the title (truncated) drawn vertically along the line.
+const annotationOverlayPlugin = {
+  id: "sl-annotations",
+  afterDatasetsDraw(chart) {
+    const items = annotationsState.items;
+    if (!items || !items.length) return;
+    const scaleX = chart.scales.x;
+    const scaleY = chart.scales.y;
+    if (!scaleX || !scaleY) return;
+    const labels = chart.data.labels || [];
+    if (!labels.length) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    for (const a of items) {
+      const labelForA = fmtBucket(a.at, "day");
+      const idx = labels.indexOf(labelForA);
+      if (idx < 0) continue;
+      const x = scaleX.getPixelForValue(idx);
+      const yTop = scaleY.top;
+      const yBot = scaleY.bottom;
+      ctx.strokeStyle = annotationColor(a);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBot);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Title pill at the top of the line. Truncate long titles so the
+      // chart isn't drowned by a 60-char marker.
+      const text = a.title.length > 28 ? a.title.slice(0, 26) + "…" : a.title;
+      ctx.font = "11px system-ui, sans-serif";
+      const metrics = ctx.measureText(text);
+      const pad = 4;
+      const pillW = metrics.width + pad * 2;
+      const pillH = 16;
+      const pillX = Math.max(scaleX.left, Math.min(scaleX.right - pillW, x - pillW / 2));
+      const pillY = yTop + 2;
+      ctx.fillStyle = "rgba(20,20,24,0.92)";
+      ctx.strokeStyle = annotationColor(a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = annotationColor(a);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, pillX + pad, pillY + pillH / 2 + 0.5);
+    }
+    ctx.restore();
+  },
+};
+if (typeof Chart !== "undefined") {
+  Chart.register(annotationOverlayPlugin);
 }
 
 function chartOpts(opts) {
   const stacked = !!opts.stacked;
+  const yTitle = opts.yTitle || "";
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -759,7 +1777,17 @@ function chartOpts(opts) {
     },
     scales: {
       x: { stacked, ticks: { color: "#8a8a92", maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { color: "#26262d" } },
-      y: { stacked, ticks: { color: "#8a8a92" }, grid: { color: "#26262d" } },
+      y: {
+        stacked,
+        beginAtZero: true,
+        // Tokens, sessions, costs are all non-negative. Without this floor,
+        // Chart.js auto-scales to ±1 when every point is zero, producing a
+        // misleading "0 ± 1" range that suggests negative usage is possible.
+        min: 0,
+        ticks: { color: "#8a8a92" },
+        grid: { color: "#26262d" },
+        title: yTitle ? { display: true, text: yTitle, color: "#8a8a92" } : { display: false },
+      },
     },
   };
 }
@@ -768,22 +1796,207 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-let hourlyDays = 7;
+// makeSortableTable wires column-header sort + a text filter to a single
+// <table>. Caller supplies the column descriptors (key into the row object,
+// type "number"|"string", optional sortable=false), a renderer that takes
+// the filtered+sorted row list and emits the <tbody> HTML, and the empty-
+// state message. Returns a setData(rows) function the caller calls whenever
+// fresh data arrives. All sort + filter work happens client-side because
+// these tables max out at a few hundred rows.
+function makeSortableTable(opts) {
+  const state = { rows: [], sortKey: null, sortDir: 1, filter: "" };
+  const tbody = document.getElementById(opts.tbodyId);
+  const thead = document.querySelector(opts.theadSelector);
+  const filterEl = opts.filterInputId ? document.getElementById(opts.filterInputId) : null;
+
+  if (thead) {
+    Array.from(thead.querySelectorAll("th")).forEach((th, i) => {
+      const col = opts.columns[i];
+      if (!col || col.sortable === false) return;
+      th.classList.add("sortable");
+      th.addEventListener("click", () => {
+        if (state.sortKey === col.key) {
+          state.sortDir = -state.sortDir;
+        } else {
+          state.sortKey = col.key;
+          // Numbers default to descending — most-expensive sessions first
+          // is the answer to the question someone clicks "Cost" for.
+          state.sortDir = col.type === "number" ? -1 : 1;
+        }
+        syncIndicators();
+        rerender();
+      });
+    });
+  }
+  if (filterEl) {
+    filterEl.addEventListener("input", () => {
+      state.filter = filterEl.value.trim().toLowerCase();
+      rerender();
+    });
+  }
+
+  function syncIndicators() {
+    if (!thead) return;
+    Array.from(thead.querySelectorAll("th")).forEach((th, i) => {
+      const col = opts.columns[i];
+      th.classList.remove("sort-asc", "sort-desc");
+      if (col && col.key === state.sortKey) {
+        th.classList.add(state.sortDir > 0 ? "sort-asc" : "sort-desc");
+      }
+    });
+  }
+
+  function rerender() {
+    let view = state.rows;
+    if (state.filter) {
+      view = view.filter(r => opts.columns.some(c => {
+        const v = r[c.key];
+        return v != null && String(v).toLowerCase().includes(state.filter);
+      }));
+    }
+    if (state.sortKey) {
+      const col = opts.columns.find(c => c.key === state.sortKey);
+      const dir = state.sortDir;
+      view = view.slice().sort((a, b) => {
+        const va = a[state.sortKey], vb = b[state.sortKey];
+        if (col && col.type === "number") {
+          return (Number(va || 0) - Number(vb || 0)) * dir;
+        }
+        return String(va || "").localeCompare(String(vb || "")) * dir;
+      });
+    }
+    if (!view.length) {
+      tbody.innerHTML = `<tr><td colspan="${opts.emptyColspan}" class="empty">${escapeHtml(state.filter ? "No rows match the filter." : opts.emptyText)}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = view.map(opts.rowHtml).join("");
+  }
+
+  return {
+    setData(rows) { state.rows = rows || []; rerender(); },
+  };
+}
+
+// hourlyState persists across refreshes via sessionStorage so the user's
+// last pick survives a tab reload. Scope is per-tab on purpose — a fresh
+// tab starts at the defaults, so a clean view is one new-tab away.
+// State model: gran is always literal. The previous autoGran flag was
+// confusing — pinning the auto-default produced identical UI but flipped
+// internal state, which made the persistence semantics opaque. Range
+// clicks now reset gran to whatever's sensible for the new window; gran
+// clicks save the exact pick. No hidden state.
+const HOURLY_STORAGE_KEY = "sessionlens.hourly.v1";
+const hourlyState = loadHourlyState();
+function loadHourlyState() {
+  const def = { days: 7, project: "", gran: defaultGranForDays(7) };
+  try {
+    const raw = sessionStorage.getItem(HOURLY_STORAGE_KEY);
+    if (!raw) return def;
+    const parsed = JSON.parse(raw);
+    if (![1, 7, 30].includes(parsed.days)) parsed.days = 7;
+    if (!["15m", "hour", "6h", "day"].includes(parsed.gran)) parsed.gran = defaultGranForDays(parsed.days);
+    return { days: parsed.days, project: parsed.project || "", gran: parsed.gran };
+  } catch (e) {
+    return def;
+  }
+}
+function saveHourlyState() {
+  try { sessionStorage.setItem(HOURLY_STORAGE_KEY, JSON.stringify(hourlyState)); } catch (e) {}
+}
+function defaultGranForDays(days) {
+  if (days <= 1) return "15m";
+  if (days <= 7) return "hour";
+  return "6h";
+}
+let projectsSince = "30d";
+let tzDisplay = "local";      // "local" | "utc" — applied to chart axes / tooltips / session rows
+
+// fmtBucket renders an ISO-ish bucket string per tzDisplay setting. granularity:
+//   "hour" → "Jun 13, 23:00" (local) or "2026-06-13T23:00Z" (utc)
+//   "day"  → "Jun 13" (local) or "2026-06-13" (utc)
+//   "datetime" → full date + time for session rows
+// Falls back to the raw input on parse failure so a misformatted bucket stays
+// visible rather than rendering as "Invalid Date".
+function fmtBucket(b, granularity) {
+  if (!b) return "";
+  const d = new Date(b);
+  if (isNaN(d.getTime())) return String(b);
+  const useUTC = tzDisplay === "utc";
+  if (granularity === "hour") {
+    if (useUTC) return b; // already in canonical UTC form
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  if (granularity === "day") {
+    if (useUTC) return String(b).slice(0, 10);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  // "datetime"
+  if (useUTC) return String(b).replace("T", " ").replace("Z", " UTC");
+  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function hourlyURL() {
+  const u = new URLSearchParams({ days: String(hourlyState.days), gran: hourlyState.gran });
+  if (hourlyState.project) u.set("project", hourlyState.project);
+  return "/v1/stats/hourly?" + u.toString();
+}
+
+// granLabel: the chart's y-axis title and dataset label depend on granularity.
+function granLabel(gran) {
+  switch (gran) {
+    case "15m": return "Tokens / 15min";
+    case "6h":  return "Tokens / 6h";
+    case "day": return "Tokens / day";
+    default:    return "Tokens / hr";
+  }
+}
+// granForBucketFmt: map the wire granularity to the fmtBucket vocabulary
+// (which only knows "hour" / "day" / "datetime").
+function granForBucketFmt(gran) {
+  return gran === "day" ? "day" : "hour";
+}
+
+// Repopulate the project picker from the full all-time project list. Called
+// from loadAll so newly-seen projects show up without a manual refresh.
+function refreshProjectPicker(allProjects) {
+  const sel = document.getElementById("hourly-project");
+  if (!sel) return;
+  const prev = hourlyState.project;
+  const paths = (allProjects || []).map(p => p.project_path || "").filter(Boolean);
+  // Preserve order from /v1/stats/projects (cost DESC) but de-dup just in case.
+  const seen = new Set();
+  const ordered = paths.filter(p => (seen.has(p) ? false : (seen.add(p), true)));
+  sel.innerHTML = '<option value="">All projects</option>' +
+    ordered.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+  // If the previously-selected project is no longer in the list, fall back to
+  // "all" rather than leave a dangling filter.
+  if (prev && ordered.includes(prev)) {
+    sel.value = prev;
+  } else {
+    sel.value = "";
+    hourlyState.project = "";
+    saveHourlyState();
+  }
+}
 
 async function loadAll() {
   try {
-    const [summary, forecast, daily, byModel, hourly, spikes, projects, sessions] = await Promise.all([
+    const [summary, forecast, daily, byModel, hourly, spikes, projects, allProjects, sessions, settings] = await Promise.all([
       getJSON("/v1/stats/summary"),
       getJSON("/v1/forecast"),
       getJSON("/v1/stats/daily?days=30"),
       getJSON("/v1/stats/by-model?days=14"),
-      getJSON("/v1/stats/hourly?days=" + hourlyDays),
+      getJSON(hourlyURL()),
       getJSON("/v1/stats/spikes"),
-      getJSON("/v1/stats/projects?limit=20"),
+      getJSON("/v1/stats/projects?limit=20&since=" + projectsSince),
+      getJSON("/v1/stats/projects?limit=200&since=all"),
       getJSON("/v1/sessions?limit=20"),
+      getJSON("/v1/settings"),
     ]);
+    tzDisplay = (settings && settings.tz_display === "utc") ? "utc" : "local";
     renderSummary(summary);
     renderForecast(forecast);
+    refreshProjectPicker(allProjects);
     renderHourly(hourly);
     renderByModel(byModel);
     renderDaily(daily);
@@ -800,40 +2013,223 @@ function wireToggles() {
   const input = document.getElementById("mock-input");
   input.addEventListener("change", () => setMockMode(input.checked));
 
-  // Hourly range buttons.
+  // Hourly range buttons. Changing the window resets granularity to the
+  // sensible default for that window — otherwise a "15m × 30d" pick would
+  // produce ~2,900 buckets, which is useless. The user can still pick a
+  // different granularity afterwards and it'll persist.
   document.querySelectorAll("#hourly-range button").forEach(btn => {
     btn.addEventListener("click", async () => {
       document.querySelectorAll("#hourly-range button").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      hourlyDays = Number(btn.dataset.days || 7);
+      hourlyState.days = Number(btn.dataset.days || 7);
+      hourlyState.gran = defaultGranForDays(hourlyState.days);
+      saveHourlyState();
+      syncHourlyGranButtons();
       try {
-        const hourly = await getJSON("/v1/stats/hourly?days=" + hourlyDays);
+        const hourly = await getJSON(hourlyURL());
         renderHourly(hourly);
+      } catch (e) { console.error(e); }
+    });
+  });
+
+  // Granularity buttons. Saves the exact pick; refresh preserves it.
+  document.querySelectorAll("#hourly-gran button").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      hourlyState.gran = btn.dataset.gran || "hour";
+      saveHourlyState();
+      syncHourlyGranButtons();
+      try {
+        const hourly = await getJSON(hourlyURL());
+        renderHourly(hourly);
+      } catch (e) { console.error(e); }
+    });
+  });
+
+  // Hourly project picker.
+  document.getElementById("hourly-project").addEventListener("change", async (e) => {
+    hourlyState.project = e.target.value || "";
+    saveHourlyState();
+    try {
+      const hourly = await getJSON(hourlyURL());
+      renderHourly(hourly);
+    } catch (err) { console.error(err); }
+  });
+
+  // Top projects range buttons.
+  document.querySelectorAll("#projects-range button").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      document.querySelectorAll("#projects-range button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      projectsSince = btn.dataset.since || "30d";
+      try {
+        const projects = await getJSON("/v1/stats/projects?limit=20&since=" + projectsSince);
+        renderProjects(projects);
       } catch (e) { console.error(e); }
     });
   });
 }
 
+// Settings modal: load/save persisted user settings, plus the destructive
+// "Clear historical data" action. Plan presets keep the form sane for the
+// common case (flat-rate Pro/Max users want the API-rate alert off so the
+// dashboard stops calling them "over budget").
+const PLAN_PRESETS = {
+  pro:     { plan_budget_usd: 20,  api_rate_alert_usd: 0 },
+  max_5x:  { plan_budget_usd: 100, api_rate_alert_usd: 0 },
+  max_20x: { plan_budget_usd: 200, api_rate_alert_usd: 0 },
+  payg:    null,
+  custom:  null,
+};
+
+function openSettings() {
+  document.getElementById("settings-modal").hidden = false;
+  document.getElementById("set-feedback").hidden = true;
+  loadSettingsIntoForm().catch(console.error);
+}
+function closeSettings() {
+  document.getElementById("settings-modal").hidden = true;
+}
+
+async function loadSettingsIntoForm() {
+  const v = await getJSON("/v1/settings");
+  document.getElementById("set-plan-tier").value     = v.plan_tier || "";
+  document.getElementById("set-plan-budget").value   = v.plan_budget_usd ?? "";
+  document.getElementById("set-api-alert").value     = v.api_rate_alert_usd ?? "";
+  document.getElementById("set-spike-ratio").value   = v.spike_session_ratio ?? "";
+  document.getElementById("set-spike-window").value  = v.spike_session_window_n ?? "";
+  document.getElementById("set-trend-ratio").value   = v.spike_trend_ratio ?? "";
+  document.getElementById("set-tz-display").value    = v.tz_display || "local";
+  refreshClearLabels();
+}
+
+function refreshClearLabels() {
+  const sel = document.getElementById("set-tz-display");
+  const label = (sel && sel.value === "utc") ? "(UTC)" : "(Local)";
+  const f = document.getElementById("set-clear-from-label");
+  const t = document.getElementById("set-clear-to-label");
+  if (f) f.textContent = `From ${label}`;
+  if (t) t.textContent = `To ${label}`;
+}
+
+function handleTierChange() {
+  const tier = document.getElementById("set-plan-tier").value;
+  const preset = PLAN_PRESETS[tier];
+  if (!preset) return;
+  document.getElementById("set-plan-budget").value = preset.plan_budget_usd;
+  document.getElementById("set-api-alert").value   = preset.api_rate_alert_usd;
+}
+
+async function saveSettings() {
+  const body = {
+    plan_tier:               document.getElementById("set-plan-tier").value || "",
+    plan_budget_usd:         Number(document.getElementById("set-plan-budget").value || 0),
+    api_rate_alert_usd:      Number(document.getElementById("set-api-alert").value || 0),
+    spike_session_ratio:     Number(document.getElementById("set-spike-ratio").value || 0),
+    spike_session_window_n:  Number(document.getElementById("set-spike-window").value || 0),
+    spike_trend_ratio:       Number(document.getElementById("set-trend-ratio").value || 0),
+    tz_display:              document.getElementById("set-tz-display").value || "local",
+  };
+  const fb = document.getElementById("set-feedback");
+  try {
+    const r = await fetch("/v1/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error("PUT /v1/settings -> " + r.status);
+    fb.textContent = "Saved.";
+    fb.style.color = ""; // reset
+    fb.hidden = false;
+    setTimeout(() => { fb.hidden = true; }, 1500);
+    await loadAll();
+  } catch (e) {
+    console.error(e);
+    fb.textContent = "Error: " + e.message;
+    fb.style.color = "var(--bad)";
+    fb.hidden = false;
+  }
+}
+
+// clearDatetimeToUTC reads a <input type="datetime-local"> value (e.g.
+// "2026-06-14T13:30") and returns an RFC3339 UTC string for the DELETE query.
+// If tzDisplay==="utc", the input is treated as a UTC wall-clock time. If
+// "local", it's interpreted as the user's browser-local time first, then
+// converted. Returns "" for empty input.
+function clearDatetimeToUTC(val) {
+  if (!val) return "";
+  // datetime-local has no seconds — append :00 so Date parses consistently.
+  const padded = val.length === 16 ? val + ":00" : val;
+  const d = tzDisplay === "utc"
+    ? new Date(padded + "Z")
+    : new Date(padded);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString();
+}
+
+async function handleClearData() {
+  const fromRaw = document.getElementById("set-clear-from").value;
+  const toRaw   = document.getElementById("set-clear-to").value;
+  const from    = clearDatetimeToUTC(fromRaw);
+  const to      = clearDatetimeToUTC(toRaw);
+  const tzLabel = tzDisplay === "utc" ? "UTC" : "local";
+  let msg;
+  if (!from && !to) {
+    msg = "Delete ALL sessions? This cannot be undone.";
+  } else {
+    const left  = fromRaw ? `${fromRaw} ${tzLabel}` : "beginning";
+    const right = toRaw   ? `${toRaw} ${tzLabel}`   : "now";
+    msg = `Delete sessions ended between [${left}] and [${right}]?\nThis cannot be undone.`;
+  }
+  if (!confirm(msg)) return;
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+  const qs = params.toString();
+  try {
+    const r = await fetch("/v1/sessions" + (qs ? "?" + qs : ""), { method: "DELETE" });
+    if (!r.ok) throw new Error("DELETE /v1/sessions -> " + r.status);
+    const j = await r.json();
+    alert("Deleted " + j.deleted + " session" + (j.deleted === 1 ? "" : "s") + ".");
+    document.getElementById("set-clear-from").value = "";
+    document.getElementById("set-clear-to").value = "";
+    await loadAll();
+  } catch (e) {
+    console.error(e);
+    alert("Error: " + e.message);
+  }
+}
+
+function wireSettings() {
+  document.getElementById("settings-btn").addEventListener("click", openSettings);
+  document.getElementById("set-cancel").addEventListener("click", closeSettings);
+  document.getElementById("set-save").addEventListener("click", saveSettings);
+  document.getElementById("set-plan-tier").addEventListener("change", handleTierChange);
+  document.getElementById("set-tz-display").addEventListener("change", refreshClearLabels);
+  document.getElementById("set-clear-btn").addEventListener("click", handleClearData);
+  // Backdrop click closes (but not clicks inside the panel).
+  document.getElementById("settings-modal").addEventListener("click", (e) => {
+    if (e.target.id === "settings-modal") closeSettings();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !document.getElementById("settings-modal").hidden) {
+      closeSettings();
+    }
+  });
+}
+
 async function syncInitialMock() {
-  // Server is the source of truth (env var may have set MOCK_MODE=1). Sync
-  // from server first, then let localStorage override if the user previously
-  // toggled it.
+  // Server is the sole source of truth. Earlier versions cached the user's
+  // mock preference in localStorage, but that meant a stale "1" set months
+  // ago would silently flip a freshly-restarted live server into mock mode.
+  // The banner now reflects whatever the server reports — period.
   let serverMock = false;
   try {
     const r = await getJSON("/v1/mode");
     serverMock = !!r.mock;
   } catch (_) {}
-
-  const stored = localStorage.getItem("session-lens-mock");
-  if (stored === "0" || stored === "1") {
-    const desired = stored === "1";
-    if (desired !== serverMock) {
-      try { await postJSON("/v1/mode", { mock: desired }); } catch (_) {}
-    }
-    applyMockBanner(desired);
-  } else {
-    applyMockBanner(serverMock);
-  }
+  // One-time cleanup of any pre-existing key from older builds.
+  try { localStorage.removeItem("session-lens-mock"); } catch (_) {}
+  applyMockBanner(serverMock);
 }
 
 // SSE live-tail
@@ -863,9 +2259,94 @@ function initSSE() {
   });
 }
 
+// Sortable+filterable table instances. Defined as let-bindings so they're
+// initialized inside main() once the DOM exists (the helper hooks into
+// <th> elements and the filter input at construction time). The renderers
+// kept their old names (renderByModel, renderProjects, renderSessions) so
+// loadAll didn't need updating — they now delegate to these instances.
+let byModelTable, projectsTable, sessionsTable;
+
 async function main() {
   setMonth();
+
+  byModelTable = makeSortableTable({
+    tbodyId: "bymodel-body",
+    theadSelector: "#bymodel-table thead tr",
+    filterInputId: "bymodel-filter",
+    emptyColspan: 7,
+    emptyText: "No model totals.",
+    columns: [
+      { key: "family",            type: "string" },
+      { key: "session_count",     type: "number" },
+      { key: "input_tokens",      type: "number" },
+      { key: "output_tokens",     type: "number" },
+      { key: "cache_read_tokens", type: "number" },
+      { key: "total_tokens",      type: "number" },
+      { key: "total_cost_usd",    type: "number" },
+    ],
+    rowHtml: (m) => `
+      <tr>
+        <td>${swatchHtml(m.family)}${escapeHtml(m.family)}</td>
+        <td class="num">${fmt.num(m.session_count)}</td>
+        <td class="num">${fmt.num(m.input_tokens)}</td>
+        <td class="num">${fmt.num(m.output_tokens)}</td>
+        <td class="num">${fmt.num(m.cache_read_tokens)} / ${fmt.num(m.cache_write_tokens)}</td>
+        <td class="num">${fmt.num(m.total_tokens)}</td>
+        <td class="num">${fmt.usd(m.total_cost_usd)}</td>
+      </tr>`,
+  });
+
+  projectsTable = makeSortableTable({
+    tbodyId: "projects-body",
+    theadSelector: "#projects-table thead tr",
+    filterInputId: "projects-filter",
+    emptyColspan: 4,
+    emptyText: "No projects yet.",
+    columns: [
+      { key: "project_path",   type: "string" },
+      { key: "session_count",  type: "number" },
+      { key: "total_tokens",   type: "number" },
+      { key: "total_cost_usd", type: "number" },
+    ],
+    rowHtml: (r) => `
+      <tr>
+        <td>${escapeHtml(r.project_path || "(unknown)")}</td>
+        <td class="num">${fmt.num(r.session_count)}</td>
+        <td class="num">${fmt.num(r.total_tokens)}</td>
+        <td class="num">${fmt.usd(r.total_cost_usd)}</td>
+      </tr>`,
+  });
+
+  sessionsTable = makeSortableTable({
+    tbodyId: "sessions-body",
+    theadSelector: "#sessions-table thead tr",
+    filterInputId: "sessions-filter",
+    emptyColspan: 6,
+    emptyText: "No sessions yet.",
+    columns: [
+      { key: "id",             type: "string" },
+      { key: "project_path",   type: "string" },
+      { key: "model",          type: "string" },
+      { key: "ended_at",       type: "string" }, // ISO timestamps sort lexicographically
+      { key: "turns",          type: "number" },
+      { key: "total_cost_usd", type: "number" },
+    ],
+    rowHtml: (r) => {
+      const fam = modelFamily(r.model);
+      return `
+      <tr>
+        <td><a class="session-link" href="#session/${escapeHtml(r.id)}">${escapeHtml(r.id)}</a></td>
+        <td>${escapeHtml(r.project_path || "(unknown)")}</td>
+        <td>${swatchHtml(fam)}${escapeHtml(r.model || "(unknown)")}</td>
+        <td>${escapeHtml(fmtBucket(r.ended_at, "datetime"))}</td>
+        <td class="num">${fmt.num(r.turns)}</td>
+        <td class="num">${fmt.usd(r.total_cost_usd)}</td>
+      </tr>`;
+    },
+  });
+
   wireToggles();
+  wireSettings();
 
   // Session detail: delegate clicks on #session/* links in the sessions table.
   document.getElementById("sessions-body").addEventListener("click", (e) => {
@@ -875,23 +2356,72 @@ async function main() {
     window.location.hash = a.getAttribute("href").slice(1);
   });
 
-  // Back button clears the detail panel and removes the fragment.
+  // Back buttons: clearing the hash routes to Dashboard via hashchange.
   document.getElementById("detail-back").addEventListener("click", () => {
     window.location.hash = "";
-    hideSessionDetail();
+  });
+  document.getElementById("compare-back").addEventListener("click", () => {
+    window.location.hash = "";
+  });
+  document.getElementById("cmp-apply").addEventListener("click", () => { loadCompare(); });
+  // Alignment toggle — event-delegate on the toggle container so both buttons
+  // route through one handler. Only re-renders the chart; no refetch since the
+  // switch is purely a client-side view over the same payload.
+  const alignToggle = document.getElementById("cmp-align-toggle");
+  if (alignToggle) {
+    alignToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".align-btn");
+      if (!btn) return;
+      const mode = btn.dataset.align;
+      if (mode !== "period" && mode !== "clock") return;
+      if (mode === cmpAlignMode) return;
+      cmpAlignMode = mode;
+      alignToggle.querySelectorAll(".align-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.align === mode);
+      });
+      if (lastCompareData) {
+        renderCompareDaily(
+          lastCompareData.daily_a || [],
+          lastCompareData.daily_b || [],
+          lastCompareData.granularity || "day",
+        );
+      }
+    });
+  }
+
+  document.getElementById("annotations-back").addEventListener("click", () => {
+    window.location.hash = "";
+  });
+  document.getElementById("ann-save").addEventListener("click", () => { saveAnnotation(); });
+  document.getElementById("ann-list").addEventListener("click", (e) => {
+    const btn = e.target.closest(".ann-del");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id) return;
+    if (!confirm("Delete this annotation?")) return;
+    deleteAnnotation(id);
   });
 
   // Respond to hash changes (browser back/forward, direct link).
   window.addEventListener("hashchange", handleHashChange);
 
+  // Reflect the persisted hourly window / granularity in the segment
+  // controls BEFORE the first fetch so the buttons match what's about to
+  // render. The project select gets repopulated after /v1/stats/projects
+  // returns; preserving its persisted value happens there.
+  syncHourlyRangeButtons();
+  syncHourlyGranButtons();
+
   await checkHealth();
   await syncInitialMock();
+  // Annotations are needed before loadAll() so the charts pick them up on
+  // their first draw — the overlay plugin reads annotationsState directly
+  // from charts' afterDatasetsDraw hook.
+  await loadAnnotations();
   await loadAll();
 
-  // Handle a fragment present on initial load.
-  if (window.location.hash.startsWith("#session/")) {
-    await handleHashChange();
-  }
+  // Initial route: sync to whatever hash is present (including none → Dashboard).
+  await routeTo(window.location.hash);
 
   // Start SSE live-tail after initial data load.
   initSSE();

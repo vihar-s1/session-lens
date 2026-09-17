@@ -7,22 +7,21 @@ import (
 	"github.com/viharshah/session-lens/internal/db"
 )
 
-// TestRollingAvgCostUSD_EmptyWindow verifies that RollingAvgCostUSD returns
-// exactly 0 (no panic, no error) when there are no sessions in the 7-day
-// window.
-func TestRollingAvgCostUSD_EmptyWindow(t *testing.T) {
+// TestBaselineP75CostUSD_EmptyWindow verifies that the baseline returns
+// exactly 0 (no panic, no error) when there are no sessions in the window.
+func TestBaselineP75CostUSD_EmptyWindow(t *testing.T) {
 	conn, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer conn.Close()
 
-	avg, err := RollingAvgCostUSD(conn)
+	baseline, err := BaselineP75CostUSD(conn, 20)
 	if err != nil {
-		t.Fatalf("RollingAvgCostUSD error on empty DB: %v", err)
+		t.Fatalf("BaselineP75CostUSD error on empty DB: %v", err)
 	}
-	if avg != 0 {
-		t.Errorf("RollingAvgCostUSD on empty DB = %v, want 0", avg)
+	if baseline != 0 {
+		t.Errorf("BaselineP75CostUSD on empty DB = %v, want 0", baseline)
 	}
 }
 

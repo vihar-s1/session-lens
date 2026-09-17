@@ -24,12 +24,13 @@ type stubNotifier struct {
 type notifyCall struct {
 	title   string
 	message string
+	openURL string
 }
 
-func (s *stubNotifier) Notify(title, message string) {
+func (s *stubNotifier) Notify(title, message, openURL string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls = append(s.calls, notifyCall{title, message})
+	s.calls = append(s.calls, notifyCall{title, message, openURL})
 }
 
 func (s *stubNotifier) Calls() []notifyCall {

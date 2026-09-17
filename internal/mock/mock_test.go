@@ -2,6 +2,7 @@ package mock
 
 import (
 	"testing"
+	"time"
 
 	"github.com/viharshah/session-lens/internal/stats"
 )
@@ -61,12 +62,12 @@ func TestDatasetAggregations(t *testing.T) {
 		t.Errorf("daily buckets = %d, want %d", len(daily), Days)
 	}
 
-	hourly := d.Hourly(7)
+	hourly := d.Hourly(7, "", stats.GranHour)
 	if len(hourly) == 0 {
 		t.Errorf("hourly buckets empty")
 	}
 
-	projects := d.Projects(10)
+	projects := d.Projects(10, time.Time{})
 	if len(projects) < 2 {
 		t.Errorf("expected at least 2 projects, got %d", len(projects))
 	}

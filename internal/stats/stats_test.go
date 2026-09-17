@@ -81,10 +81,12 @@ func TestMonthSummary(t *testing.T) {
 	}
 }
 
-func TestMonthSummaryClampsUtilisation(t *testing.T) {
+// TestMonthSummaryUtilisationUnclamped verifies that plan utilisation reports
+// the true ratio even when it exceeds 100%. The card label "999.9%" was a
+// rendering lie that hid real overspend signals; the value must be raw now.
+func TestMonthSummaryUtilisationUnclamped(t *testing.T) {
 	conn := openTestDB(t)
 	defer conn.Close()
-	// Single huge session to push util past clamp.
 	huge := dbpkg.Session{
 		ID: "huge", ProjectPath: "/proj/x",
 		StartedAt: time.Now().UTC().Format(time.RFC3339),
@@ -98,8 +100,9 @@ func TestMonthSummaryClampsUtilisation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MonthSummary: %v", err)
 	}
-	if s.PlanUtilisationPct != 999.9 {
-		t.Errorf("PlanUtilisationPct = %v, want 999.9", s.PlanUtilisationPct)
+	want := (9999.0 / 20.0) * 100.0
+	if s.PlanUtilisationPct < want-0.1 || s.PlanUtilisationPct > want+0.1 {
+		t.Errorf("PlanUtilisationPct = %v, want ~%v (unclamped)", s.PlanUtilisationPct, want)
 	}
 }
 
@@ -132,7 +135,7 @@ func TestProjects(t *testing.T) {
 	defer conn.Close()
 	seed(t, conn)
 
-	rows, err := Projects(conn, 20)
+	rows, err := Projects(conn, 20, time.Time{})
 	if err != nil {
 		t.Fatalf("Projects: %v", err)
 	}
