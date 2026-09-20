@@ -358,4 +358,3 @@ func logErr(err error) {
 	defer f.Close()
 	fmt.Fprintf(f, "%s %v\n", time.Now().UTC().Format(time.RFC3339), err)
 }
-

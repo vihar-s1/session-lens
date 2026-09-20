@@ -80,7 +80,7 @@ func postSession(t *testing.T, ts *httptest.Server, s db.Session) int {
 
 // daysAgo returns an RFC3339 timestamp N days before today at noon UTC.
 func daysAgo(n int) string {
-	t := time.Now().UTC().AddDate(0, 0, -n).Truncate(24*time.Hour).Add(12 * time.Hour)
+	t := time.Now().UTC().AddDate(0, 0, -n).Truncate(24 * time.Hour).Add(12 * time.Hour)
 	return t.Format(time.RFC3339)
 }
 

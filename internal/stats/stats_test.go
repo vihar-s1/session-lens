@@ -23,19 +23,19 @@ func seed(t *testing.T, conn *sql.DB) {
 	fixtures := []dbpkg.Session{
 		{
 			ID: "s1", ProjectPath: "/proj/a", StartedAt: now.Format(time.RFC3339),
-			EndedAt: now.Format(time.RFC3339),
+			EndedAt:     now.Format(time.RFC3339),
 			InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 100, CacheWriteTokens: 50,
 			TotalCostUSD: 1.50, Model: "claude-sonnet", Turns: 3,
 		},
 		{
 			ID: "s2", ProjectPath: "/proj/a", StartedAt: now.Format(time.RFC3339),
-			EndedAt: now.Format(time.RFC3339),
+			EndedAt:     now.Format(time.RFC3339),
 			InputTokens: 2000, OutputTokens: 800, CacheReadTokens: 0, CacheWriteTokens: 0,
 			TotalCostUSD: 2.25, Model: "claude-sonnet", Turns: 5,
 		},
 		{
 			ID: "s3", ProjectPath: "/proj/b", StartedAt: now.Format(time.RFC3339),
-			EndedAt: now.Format(time.RFC3339),
+			EndedAt:     now.Format(time.RFC3339),
 			InputTokens: 500, OutputTokens: 200, CacheReadTokens: 0, CacheWriteTokens: 0,
 			TotalCostUSD: 0.50, Model: "claude-haiku", Turns: 2,
 		},
@@ -89,8 +89,8 @@ func TestMonthSummaryUtilisationUnclamped(t *testing.T) {
 	defer conn.Close()
 	huge := dbpkg.Session{
 		ID: "huge", ProjectPath: "/proj/x",
-		StartedAt: time.Now().UTC().Format(time.RFC3339),
-		EndedAt:   time.Now().UTC().Format(time.RFC3339),
+		StartedAt:    time.Now().UTC().Format(time.RFC3339),
+		EndedAt:      time.Now().UTC().Format(time.RFC3339),
 		TotalCostUSD: 9999.0, Model: "claude-opus", Turns: 1,
 	}
 	if _, _, err := dbpkg.UpsertSession(conn, huge); err != nil {

@@ -149,10 +149,10 @@ func TestParseEmpty(t *testing.T) {
 // negative token values to 0 rather than producing a negative cost.
 func TestComputeCostNegativeInputsClamped(t *testing.T) {
 	cases := []struct {
-		name                     string
-		in, out, cr, cw          int64
-		wantNonNegative          bool
-		wantExactZero            bool
+		name            string
+		in, out, cr, cw int64
+		wantNonNegative bool
+		wantExactZero   bool
 	}{
 		{"all negative clamp to zero", -1000, -500, -200, -100, true, true},
 		{"negative input only", -100, 50, 0, 0, true, false},

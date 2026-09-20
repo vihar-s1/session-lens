@@ -48,16 +48,6 @@ func shortProjectName(projectPath string) string {
 	return base
 }
 
-// dashboardOpenURL is the base URL the notification click-through opens.
-// Mirrors alerter's dashboardURL() — duplicated here so we can append a
-// "/#session/<id>" fragment without bouncing through the alerter package.
-func dashboardOpenURL() string {
-	if u := os.Getenv("SESSIONLENS_DASHBOARD_URL"); u != "" {
-		return u
-	}
-	return "http://localhost:7821"
-}
-
 // spikeNotified holds session IDs we've already fired a cost-spike notification
 // for during this process lifetime. The Claude Code hook fires on every turn
 // with the cumulative session cost, so without this set a long expensive
@@ -878,7 +868,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, cfg Config, hub
 				}
 				msg := fmt.Sprintf("[%s · %s] $%.2f — %.1fx the %d-day P75 ($%.2f)",
 					header, idPrefix, costUSD, costUSD/baseline, windowDays, baseline)
-				openURL := fmt.Sprintf("%s/#session/%s", dashboardOpenURL(), url.PathEscape(sessionID))
+				openURL := fmt.Sprintf("%s/#session/%s", alerter.DashboardURL(), url.PathEscape(sessionID))
 				notifier.Notify("session-lens: cost spike", msg, openURL)
 			}
 		}(ev.TotalCostUSD, spikeCfg.SessionRatio, spikeCfg.SessionWindowN)
@@ -926,7 +916,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, cfg Config, hub
 				msg = fmt.Sprintf("[%s · %s] $%.2f/min burst over a %d-min window",
 					header, idPrefix, burst.USDPerMin, stats.DefaultBurstConfig().WindowMinutes)
 			}
-			openURL := fmt.Sprintf("%s/#session/%s", dashboardOpenURL(), url.PathEscape(sessionID))
+			openURL := fmt.Sprintf("%s/#session/%s", alerter.DashboardURL(), url.PathEscape(sessionID))
 			notifier.Notify("session-lens: burn-rate burst", msg, openURL)
 		}()
 	}

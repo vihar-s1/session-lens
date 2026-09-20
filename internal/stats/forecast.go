@@ -8,13 +8,13 @@ import (
 
 // Forecast holds the month-end cost projection.
 type Forecast struct {
-	MonthToDateUSD        float64 `json:"month_to_date_usd"`
+	MonthToDateUSD         float64 `json:"month_to_date_usd"`
 	ProjectedMonthTotalUSD float64 `json:"projected_month_total_usd"`
-	DailyAvgLast7DUSD     float64 `json:"daily_avg_last_7d_usd"`
-	DaysRemaining         int     `json:"days_remaining"`
-	BudgetUSD             float64 `json:"budget_usd"`
-	OnTrack               bool    `json:"on_track"`
-	OverageEstimateUSD    float64 `json:"overage_estimate_usd"`
+	DailyAvgLast7DUSD      float64 `json:"daily_avg_last_7d_usd"`
+	DaysRemaining          int     `json:"days_remaining"`
+	BudgetUSD              float64 `json:"budget_usd"`
+	OnTrack                bool    `json:"on_track"`
+	OverageEstimateUSD     float64 `json:"overage_estimate_usd"`
 }
 
 // MonthForecast computes a burn-rate forecast anchored to now.
@@ -105,13 +105,13 @@ func computeForecast(mtd float64, dailyCosts []float64, budgetUSD float64, now t
 	onTrack := budgetUSD <= 0 || projected <= budgetUSD
 
 	return Forecast{
-		MonthToDateUSD:        mtd,
+		MonthToDateUSD:         mtd,
 		ProjectedMonthTotalUSD: projected,
-		DailyAvgLast7DUSD:     avgDaily,
-		DaysRemaining:         daysRemaining,
-		BudgetUSD:             budgetUSD,
-		OnTrack:               onTrack,
-		OverageEstimateUSD:    overage,
+		DailyAvgLast7DUSD:      avgDaily,
+		DaysRemaining:          daysRemaining,
+		BudgetUSD:              budgetUSD,
+		OnTrack:                onTrack,
+		OverageEstimateUSD:     overage,
 	}
 }
 

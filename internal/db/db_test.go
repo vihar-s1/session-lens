@@ -1,8 +1,8 @@
 package db
 
 import (
-	"errors"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"

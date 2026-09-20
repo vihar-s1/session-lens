@@ -30,7 +30,7 @@ func Default() Notifier {
 		return noopNotifier{}
 	}
 	if path, err := exec.LookPath("terminal-notifier"); err == nil {
-		return terminalNotifier{binary: path, defaultURL: dashboardURL()}
+		return terminalNotifier{binary: path, defaultURL: DashboardURL()}
 	}
 	logFallbackOnce()
 	return osascriptNotifier{}
@@ -49,7 +49,10 @@ func logFallbackOnce() {
 		"Run `brew install terminal-notifier` to enable opening the dashboard from a notification.")
 }
 
-func dashboardURL() string {
+// DashboardURL returns the base URL notification click-throughs and any
+// deep-linking code should open. Callers append URL fragments like
+// "/#session/<id>" to jump to a specific view.
+func DashboardURL() string {
 	if u := os.Getenv("SESSIONLENS_DASHBOARD_URL"); u != "" {
 		return u
 	}

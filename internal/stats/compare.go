@@ -128,10 +128,10 @@ WHERE ended_at >= ? AND ended_at < ?
 	modelAgg := map[string]*ModelSlice{}
 	for rows.Next() {
 		var (
-			model                  string
-			inT, outT, crT, cwT    int64
-			cost                   float64
-			turns                  int
+			model               string
+			inT, outT, crT, cwT int64
+			cost                float64
+			turns               int
 		)
 		if err := rows.Scan(&model, &inT, &outT, &crT, &cwT, &cost, &turns); err != nil {
 			return nil, nil, fmt.Errorf("scan session: %w", err)
