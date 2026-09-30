@@ -287,6 +287,32 @@
     .model-mix-bar .mm-b { background: #5cd6c4; height: 100%; }
     .compare-empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
 
+    /* Repricing view — reuses compare-* classes for headline cards but
+       has its own form layout and per-model paired-bar visual. */
+    .rp-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; margin-bottom: 18px; }
+    .rp-form fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    .rp-form legend { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 0 6px; }
+    .rp-form .date-row { display: flex; gap: 8px; align-items: center; }
+    .rp-form .date-row label { color: var(--muted); font-size: 12px; min-width: 96px; }
+    .rp-form input, .rp-form select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+    .rp-bars { display: grid; grid-template-columns: 1fr; gap: 6px; }
+    .rp-bar-row { display: grid; grid-template-columns: 180px 1fr 120px; gap: 12px; align-items: center; font-size: 12px; }
+    .rp-bar-row .rp-model { color: var(--text); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rp-bar-track { position: relative; height: 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .rp-bar-orig { position: absolute; top: 0; left: 0; height: 50%; background: #f0a060; }
+    .rp-bar-hypo { position: absolute; top: 50%; left: 0; height: 50%; background: #5cd6c4; }
+    .rp-bar-row .rp-delta { text-align: right; font-variant-numeric: tabular-nums; }
+    .rp-delta.pos { color: #f87171; }
+    .rp-delta.neg { color: #4ade80; }
+    .rp-top { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .rp-top table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rp-top th, .rp-top td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .rp-top th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+    .rp-top td.rp-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .rp-top tr:last-child td { border-bottom: 0; }
+    .rp-top a { color: var(--accent); text-decoration: none; }
+    .rp-top a:hover { text-decoration: underline; }
+
     /* Annotations view — list + form for timeline markers. Visibility is
        owned by the .page / .page.active rules at the top of this stylesheet. */
     .ann-form { display: grid; grid-template-columns: 140px 1fr; gap: 10px 14px; align-items: center; margin: 8px 0 18px; max-width: 720px; }
@@ -355,6 +381,7 @@
       <a class="nav-tab" data-route="#"            href="#">Dashboard</a>
       <a class="nav-tab" data-route="#compare"     href="#compare" title="Compare two date ranges side-by-side">⇄ Compare</a>
       <a class="nav-tab" data-route="#annotations" href="#annotations" title="Mark events on the timeline">📌 Annotations</a>
+      <a class="nav-tab" data-route="#repricing"   href="#repricing"   title="Reprice historical sessions under a different model">🔀 Repricing</a>
     </nav>
     <div class="header-right">
       <button class="icon-btn" id="settings-btn" title="Plan, alerts, spike tuning, clear data">⚙ Settings</button>
@@ -741,6 +768,87 @@
 
     <div class="ann-list" id="ann-list">
       <div class="ann-empty" id="ann-empty">No annotations yet. Add one above.</div>
+    </div>
+  </div>
+
+  <!-- Repricing panel — toggled by #repricing in the URL. Runs a model-
+       swap what-if against historical sessions and shows the counterfactual
+       bill. Not available under mock mode: repricing is only meaningful
+       against real spend. -->
+  <div class="panel page" id="repricing-view">
+    <button class="back-btn" id="repricing-back">&#8592; Back</button>
+    <h2>Repricing — what if?</h2>
+    <p class="compare-empty" style="text-align:left; padding:0 0 12px 0">
+      Reprice sessions in a date range as if they had run on a different model.
+      Token counts are held constant across the swap; Claude families share a
+      tokenizer within a generation, so the estimate is close but not exact
+      for cross-family swaps.
+    </p>
+
+    <div class="rp-form">
+      <fieldset>
+        <legend>Range</legend>
+        <div class="date-row">
+          <label for="rp-from">From</label>
+          <input type="date" id="rp-from" />
+        </div>
+        <div class="date-row" style="margin-top:6px">
+          <label for="rp-to">To</label>
+          <input type="date" id="rp-to" />
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Swap rule</legend>
+        <div class="date-row">
+          <label for="rp-kind">Kind</label>
+          <select id="rp-kind">
+            <option value="flat">Flat — everything to target</option>
+            <option value="family">Family — only this family</option>
+            <option value="conditional">Smart-router — family + caps</option>
+          </select>
+        </div>
+        <div class="date-row" style="margin-top:6px">
+          <label for="rp-target">Target</label>
+          <select id="rp-target">
+            <option value="claude-sonnet-5">claude-sonnet-5</option>
+            <option value="claude-opus-4-7">claude-opus-4-7</option>
+            <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+            <option value="claude-fable-5">claude-fable-5</option>
+          </select>
+        </div>
+        <div class="date-row rp-only-family" style="margin-top:6px" hidden>
+          <label for="rp-from-family">From family</label>
+          <select id="rp-from-family">
+            <option value="opus">opus</option>
+            <option value="sonnet">sonnet</option>
+            <option value="haiku">haiku</option>
+            <option value="fable">fable</option>
+          </select>
+        </div>
+        <div class="date-row rp-only-conditional" style="margin-top:6px" hidden>
+          <label for="rp-max-cost">Max cost</label>
+          <input type="number" id="rp-max-cost" min="0" step="0.5" placeholder="e.g. 5" style="width:120px" />
+        </div>
+        <div class="date-row rp-only-conditional" style="margin-top:6px" hidden>
+          <label for="rp-max-turns">Max turns</label>
+          <input type="number" id="rp-max-turns" min="0" step="1" placeholder="e.g. 20" style="width:120px" />
+        </div>
+      </fieldset>
+      <button class="icon-btn" id="rp-apply" style="background: var(--accent); color: var(--text); padding: 8px 14px">Apply</button>
+    </div>
+
+    <div id="rp-status" class="compare-empty">Pick a range and rule, then Apply.</div>
+    <div id="rp-results" hidden>
+      <div class="compare-section-title">Headline</div>
+      <div class="compare-cards" id="rp-cards"></div>
+
+      <div class="compare-section-title" style="margin-top:18px">By original model (original → hypothetical)</div>
+      <div id="rp-by-model" class="rp-bars"></div>
+
+      <div class="compare-section-title" style="margin-top:18px">Top movers (session-level)</div>
+      <div id="rp-top" class="rp-top"></div>
+
+      <div id="rp-caveat" class="compare-empty" style="text-align:left; padding: 12px 0 0 0"></div>
     </div>
   </div>
 </div>
@@ -1469,6 +1577,163 @@ async function loadCompare() {
   }
 }
 
+// --- Repricing page -------------------------------------------------
+// One-time init: seeds date defaults to the current calendar month and
+// wires the "Kind" select to hide/show conditional-only fields. Called
+// each time the page is entered, but the form-wired flag makes it
+// idempotent so we don't stack duplicate listeners.
+let repricingInited = false;
+function initRepricingPage() {
+  if (!repricingInited) {
+    // Default range: 1st of current month → today.
+    const now = new Date();
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    document.getElementById("rp-from").value = first.toISOString().slice(0, 10);
+    document.getElementById("rp-to").value = now.toISOString().slice(0, 10);
+
+    const kindSel = document.getElementById("rp-kind");
+    const syncKind = () => {
+      const k = kindSel.value;
+      document.querySelectorAll(".rp-only-family").forEach(el => {
+        el.hidden = !(k === "family" || k === "conditional");
+      });
+      document.querySelectorAll(".rp-only-conditional").forEach(el => {
+        el.hidden = k !== "conditional";
+      });
+    };
+    kindSel.addEventListener("change", syncKind);
+    syncKind();
+
+    document.getElementById("rp-apply").addEventListener("click", () => loadRepricing());
+    document.getElementById("repricing-back").addEventListener("click", () => {
+      window.location.hash = "";
+    });
+    repricingInited = true;
+  }
+}
+
+async function loadRepricing() {
+  const status = document.getElementById("rp-status");
+  const results = document.getElementById("rp-results");
+  const from = document.getElementById("rp-from").value;
+  const to = document.getElementById("rp-to").value;
+  const kind = document.getElementById("rp-kind").value;
+  const target = document.getElementById("rp-target").value;
+  const fromFamily = document.getElementById("rp-from-family").value;
+  const maxCost = document.getElementById("rp-max-cost").value;
+  const maxTurns = document.getElementById("rp-max-turns").value;
+
+  if (!from || !to) {
+    results.hidden = true;
+    status.hidden = false;
+    status.textContent = "Pick a From and To date.";
+    return;
+  }
+  status.hidden = false;
+  status.textContent = "Repricing…";
+  results.hidden = true;
+
+  const q = new URLSearchParams({ from, to, target, kind });
+  if (kind === "family" || kind === "conditional") q.set("from_family", fromFamily);
+  if (kind === "conditional") {
+    if (maxCost) q.set("max_cost_usd", maxCost);
+    if (maxTurns) q.set("max_turns", maxTurns);
+  }
+  try {
+    const data = await getJSON("/v1/repricing?" + q.toString());
+    if (!data || data.sessions === 0) {
+      status.hidden = false;
+      status.textContent = "No sessions in that range.";
+      results.hidden = true;
+      return;
+    }
+    status.hidden = true;
+    results.hidden = false;
+    renderRepricing(data);
+  } catch (e) {
+    console.error("repricing:", e);
+    status.hidden = false;
+    status.textContent = "Error: " + (e.message || e);
+    results.hidden = true;
+  }
+}
+
+function renderRepricing(d) {
+  const cards = document.getElementById("rp-cards");
+  const savings = d.delta_usd <= 0;
+  const deltaCls = savings ? "neg" : "pos";
+  const deltaSign = d.delta_usd > 0 ? "+" : "";
+  cards.innerHTML = `
+    <div class="compare-card">
+      <div class="clabel">Sessions in range</div>
+      <div class="values"><span class="v-b">${fmt.num(d.sessions)}</span></div>
+      <div class="delta">${fmt.num(d.swapped)} swapped by rule</div>
+    </div>
+    <div class="compare-card">
+      <div class="clabel">Original spend</div>
+      <div class="values"><span class="v-a">${fmt.usd(d.original_usd)}</span></div>
+    </div>
+    <div class="compare-card">
+      <div class="clabel">Hypothetical spend</div>
+      <div class="values"><span class="v-b">${fmt.usd(d.hypothetical_usd)}</span></div>
+    </div>
+    <div class="compare-card">
+      <div class="clabel">Delta</div>
+      <div class="values"><span class="v-b rp-delta ${deltaCls}">${deltaSign}${fmt.usd(d.delta_usd)}</span></div>
+      <div class="delta rp-delta ${deltaCls}">${deltaSign}${fmt.pct(d.delta_pct)}</div>
+    </div>`;
+
+  const byModel = d.by_model || [];
+  const maxDollar = byModel.reduce((m, r) => Math.max(m, r.original_usd || 0, r.hypothetical_usd || 0), 0) || 1;
+  const bars = document.getElementById("rp-by-model");
+  bars.innerHTML = byModel.map(r => {
+    const origPct = (r.original_usd / maxDollar) * 100;
+    const hypoPct = (r.hypothetical_usd / maxDollar) * 100;
+    const delta = r.hypothetical_usd - r.original_usd;
+    const cls = delta <= 0 ? "neg" : "pos";
+    const sign = delta > 0 ? "+" : "";
+    return `
+      <div class="rp-bar-row" title="${escapeHtml(r.model)} · ${fmt.num(r.sessions)} sessions">
+        <div class="rp-model">${escapeHtml(r.model)}</div>
+        <div class="rp-bar-track">
+          <div class="rp-bar-orig" style="width:${origPct.toFixed(2)}%"></div>
+          <div class="rp-bar-hypo" style="width:${hypoPct.toFixed(2)}%"></div>
+        </div>
+        <div class="rp-delta ${cls}">${sign}${fmt.usd(delta)}</div>
+      </div>`;
+  }).join("") || `<div class="compare-empty">No sessions to bucket.</div>`;
+
+  const top = d.top_moved || [];
+  const tbody = top.map(m => {
+    const delta = m.delta_usd;
+    const cls = delta <= 0 ? "neg" : "pos";
+    const sign = delta > 0 ? "+" : "";
+    const proj = m.project ? escapeHtml(m.project) : "(unknown)";
+    const shortId = (m.session_id || "").slice(0, 8);
+    return `
+      <tr>
+        <td><a href="#session/${encodeURIComponent(m.session_id)}">${escapeHtml(shortId)}</a></td>
+        <td>${proj}</td>
+        <td>${escapeHtml(m.from_model)} → ${escapeHtml(m.to_model)}</td>
+        <td class="rp-num">${fmt.usd(m.original_usd)}</td>
+        <td class="rp-num">${fmt.usd(m.hypothetical_usd)}</td>
+        <td class="rp-num rp-delta ${cls}">${sign}${fmt.usd(delta)}</td>
+      </tr>`;
+  }).join("");
+  document.getElementById("rp-top").innerHTML = top.length ? `
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Project</th><th>Swap</th>
+        <th style="text-align:right">Original</th>
+        <th style="text-align:right">Hypothetical</th>
+        <th style="text-align:right">Delta</th>
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>` : `<div class="compare-empty">Rule matched no sessions in this range.</div>`;
+
+  document.getElementById("rp-caveat").textContent = d.caveat || "";
+}
+
 // Map of route key → { pageId, navMatch, onEnter }. The key is what
 // routeTo() takes; navMatch is the data-route attribute on the nav tab to
 // highlight (so a session-detail page still highlights "Dashboard" rather
@@ -1478,9 +1743,10 @@ const ROUTES = {
   dashboard:   { pageId: "dashboard-view",   navMatch: "#",            onEnter: null },
   compare:     { pageId: "compare-view",     navMatch: "#compare",     onEnter: () => loadCompare() },
   annotations: { pageId: "annotations-view", navMatch: "#annotations", onEnter: () => loadAnnotationsPage() },
+  repricing:   { pageId: "repricing-view",   navMatch: "#repricing",   onEnter: () => initRepricingPage() },
   session:     { pageId: "session-detail",   navMatch: "#",            onEnter: null }, // onEnter set inline below
 };
-const ALL_PAGE_IDS = ["dashboard-view", "session-detail", "compare-view", "annotations-view"];
+const ALL_PAGE_IDS = ["dashboard-view", "session-detail", "compare-view", "annotations-view", "repricing-view"];
 
 function setActivePage(pageId) {
   for (const id of ALL_PAGE_IDS) {
@@ -1512,6 +1778,12 @@ async function routeTo(hash) {
     setActivePage(ROUTES.annotations.pageId);
     setActiveNav(ROUTES.annotations.navMatch);
     await ROUTES.annotations.onEnter();
+    return;
+  }
+  if (hash === "#repricing") {
+    setActivePage(ROUTES.repricing.pageId);
+    setActiveNav(ROUTES.repricing.navMatch);
+    await ROUTES.repricing.onEnter();
     return;
   }
   const m = (hash || "").match(/^#session\/(.+)$/);
