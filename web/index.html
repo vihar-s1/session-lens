@@ -309,7 +309,8 @@
     .rp-top th, .rp-top td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
     .rp-top th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
     .rp-top td.rp-num { text-align: right; font-variant-numeric: tabular-nums; }
-    .rp-top tr:last-child td { border-bottom: 0; }
+    .rp-top tbody tr:last-child td { border-bottom: 1px solid var(--border); }
+    .rp-top tfoot td { background: rgba(124,140,255,0.06); border-bottom: 0; }
     .rp-top a { color: var(--accent); text-decoration: none; }
     .rp-top a:hover { text-decoration: underline; }
 
@@ -841,6 +842,9 @@
     <div id="rp-results" hidden>
       <div class="compare-section-title">Headline</div>
       <div class="compare-cards" id="rp-cards"></div>
+
+      <div class="compare-section-title" style="margin-top:18px">Cost by model</div>
+      <div id="rp-cost-breakdown" class="rp-top"></div>
 
       <div class="compare-section-title" style="margin-top:18px">By original model (original → hypothetical)</div>
       <div id="rp-by-model" class="rp-bars"></div>
@@ -1684,6 +1688,38 @@ function renderRepricing(d) {
     </div>`;
 
   const byModel = d.by_model || [];
+
+  // Plain cost-by-model table — "what did I actually spend per model in
+  // this range," independent of any swap. Reuses the top-movers table
+  // styling for consistency.
+  const breakdownTotal = byModel.reduce((s, r) => s + (r.original_usd || 0), 0) || 0;
+  const breakdownRows = byModel.map(r => {
+    const share = breakdownTotal > 0 ? (r.original_usd / breakdownTotal) * 100 : 0;
+    return `
+      <tr>
+        <td>${escapeHtml(r.model)}</td>
+        <td class="rp-num">${fmt.num(r.sessions)}</td>
+        <td class="rp-num">${fmt.usd(r.original_usd)}</td>
+        <td class="rp-num">${fmt.pct(share)}</td>
+      </tr>`;
+  }).join("");
+  document.getElementById("rp-cost-breakdown").innerHTML = byModel.length ? `
+    <table>
+      <thead><tr>
+        <th>Model</th>
+        <th style="text-align:right">Sessions</th>
+        <th style="text-align:right">Cost</th>
+        <th style="text-align:right">Share</th>
+      </tr></thead>
+      <tbody>${breakdownRows}</tbody>
+      <tfoot><tr>
+        <td><strong>Total</strong></td>
+        <td class="rp-num">${fmt.num(d.sessions)}</td>
+        <td class="rp-num"><strong>${fmt.usd(breakdownTotal)}</strong></td>
+        <td class="rp-num">100%</td>
+      </tr></tfoot>
+    </table>` : `<div class="compare-empty">No sessions in this range.</div>`;
+
   const maxDollar = byModel.reduce((m, r) => Math.max(m, r.original_usd || 0, r.hypothetical_usd || 0), 0) || 1;
   const bars = document.getElementById("rp-by-model");
   bars.innerHTML = byModel.map(r => {
