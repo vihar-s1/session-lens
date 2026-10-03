@@ -60,10 +60,13 @@ type ModelTotal struct {
 	SessionCount     int64   `json:"session_count"`
 }
 
-// DailyByModel is one date's tokens broken down by family.
+// DailyByModel is one date's usage broken down by family. Totals and
+// Costs mirror each other key-wise (same families) so the client can
+// toggle its metric without a round-trip.
 type DailyByModel struct {
-	Bucket string           `json:"bucket"`
-	Totals map[string]int64 `json:"totals"` // family -> tokens
+	Bucket string             `json:"bucket"`
+	Totals map[string]int64   `json:"totals"` // family -> tokens
+	Costs  map[string]float64 `json:"costs"`  // family -> USD
 }
 
 // ByModelResponse is what /v1/stats/by-model returns: family totals plus the
@@ -506,7 +509,8 @@ WHERE ended_at >= ?
 // flat slice of rows. Exposed for testing and for the mock data path.
 func AggregateByModel(rows []ModelRow) ByModelResponse {
 	totals := map[string]*ModelTotal{}
-	dailyMap := map[string]map[string]int64{} // bucket -> family -> tokens
+	dailyTokens := map[string]map[string]int64{}   // bucket -> family -> tokens
+	dailyCosts := map[string]map[string]float64{}  // bucket -> family -> USD
 
 	for _, r := range rows {
 		fam := ModelFamily(r.Model)
@@ -528,10 +532,12 @@ func AggregateByModel(rows []ModelRow) ByModelResponse {
 		if len(day) >= 10 {
 			day = day[:10]
 		}
-		if _, ok := dailyMap[day]; !ok {
-			dailyMap[day] = map[string]int64{}
+		if _, ok := dailyTokens[day]; !ok {
+			dailyTokens[day] = map[string]int64{}
+			dailyCosts[day] = map[string]float64{}
 		}
-		dailyMap[day][fam] += tokens
+		dailyTokens[day][fam] += tokens
+		dailyCosts[day][fam] += r.TotalCostUSD
 	}
 
 	// Deterministic ordering for both slices.
@@ -543,14 +549,18 @@ func AggregateByModel(rows []ModelRow) ByModelResponse {
 		return totalsOut[i].TotalCostUSD > totalsOut[j].TotalCostUSD
 	})
 
-	days := make([]string, 0, len(dailyMap))
-	for d := range dailyMap {
+	days := make([]string, 0, len(dailyTokens))
+	for d := range dailyTokens {
 		days = append(days, d)
 	}
 	sort.Strings(days)
 	dailyOut := make([]DailyByModel, 0, len(days))
 	for _, d := range days {
-		dailyOut = append(dailyOut, DailyByModel{Bucket: d, Totals: dailyMap[d]})
+		dailyOut = append(dailyOut, DailyByModel{
+			Bucket: d,
+			Totals: dailyTokens[d],
+			Costs:  dailyCosts[d],
+		})
 	}
 	return ByModelResponse{Totals: totalsOut, Daily: dailyOut}
 }

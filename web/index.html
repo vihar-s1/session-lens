@@ -177,8 +177,9 @@
     .progress .bar.over { background: var(--bad); }
     h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 12px 0; }
     .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 24px; }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
     .panel-head h2 { margin: 0; }
+    .bymodel-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .seg { display: flex; gap: 4px; }
     .seg button { background: var(--border); color: var(--muted); border: 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
     .seg button.active { background: var(--accent); color: var(--text); }
@@ -571,8 +572,19 @@
 
   <div class="panel">
     <div class="panel-head">
-      <h2>Daily tokens by model</h2>
-      <input type="text" class="table-filter" id="bymodel-filter" placeholder="Filter rows…" />
+      <h2 id="bymodel-title">Daily tokens by model</h2>
+      <div class="bymodel-controls">
+        <div class="seg" id="bymodel-metric" title="Metric">
+          <button type="button" class="seg-btn active" data-metric="tokens">Tokens</button>
+          <button type="button" class="seg-btn" data-metric="cost">Cost</button>
+        </div>
+        <div class="seg" id="bymodel-chart-type" title="Chart type">
+          <button type="button" class="seg-btn active" data-ctype="stacked-bar">Stacked</button>
+          <button type="button" class="seg-btn" data-ctype="line">Line</button>
+          <button type="button" class="seg-btn" data-ctype="distribution">Distribution</button>
+        </div>
+        <input type="text" class="table-filter" id="bymodel-filter" placeholder="Filter rows…" />
+      </div>
     </div>
     <div class="chart-wrap tall"><canvas id="bymodel-chart"></canvas></div>
     <div class="empty" id="bymodel-empty" hidden>No model data yet.</div>
@@ -1019,36 +1031,151 @@ function renderDaily(buckets) {
   });
 }
 
+// byModelState persists the latest response plus the user's chart-type
+// and metric selections so toggling either control re-renders from the
+// cached payload instead of refetching. loadByModel() replaces lastResp.
+const byModelState = {
+  lastResp: null,
+  metric: "tokens",      // "tokens" | "cost"
+  chartType: "stacked-bar", // "stacked-bar" | "line" | "distribution"
+};
+
 function renderByModel(resp) {
-  destroyChart("byModel");
-  const daily = (resp && resp.daily) || [];
-  const totals = (resp && resp.totals) || [];
+  if (resp !== undefined) byModelState.lastResp = resp;
+  const data = byModelState.lastResp;
+  const daily = (data && data.daily) || [];
+  const totals = (data && data.totals) || [];
   const empty = document.getElementById("bymodel-empty");
   const canvas = document.getElementById("bymodel-chart");
+  const title = document.getElementById("bymodel-title");
+
+  const isCost = byModelState.metric === "cost";
+  title.textContent = isCost ? "Daily cost by model" : "Daily tokens by model";
+
+  destroyChart("byModel");
 
   if (daily.length === 0) {
-    empty.hidden = false; canvas.style.display = "none";
-  } else {
-    empty.hidden = true; canvas.style.display = "";
-    // Build a dataset per family present anywhere. orderedFamilies keeps
-    // curated families in their canonical order and appends unknown ones
-    // alphabetically after — a brand-new Claude model shows up as its own
-    // stack in the chart without any code change here.
-    const families = new Set();
-    daily.forEach(d => Object.keys(d.totals || {}).forEach(k => families.add(k)));
-    const ordered = orderedFamilies(families);
-    const datasets = ordered.map(f => ({
-      label: f, backgroundColor: modelColor(f),
-      data: daily.map(d => Number((d.totals || {})[f] || 0)),
-    }));
-    charts.byModel = new Chart(canvas, {
-      type: "bar",
-      data: { labels: daily.map(d => fmtBucket(d.bucket, "day")), datasets },
-      options: chartOpts({ stacked: true, yTitle: "Tokens" }),
-    });
+    empty.hidden = false;
+    canvas.style.display = "none";
+    byModelTable.setData(totals);
+    return;
+  }
+  empty.hidden = true;
+  canvas.style.display = "";
+
+  // Pick which per-day map to read based on the selected metric. Costs
+  // only lands with newer server builds; fall back to tokens on empty.
+  const seriesKey = isCost ? "costs" : "totals";
+  const haveMetric = daily.some(d => d[seriesKey] && Object.keys(d[seriesKey]).length);
+  if (!haveMetric && isCost) {
+    // Server hasn't been redeployed with per-day costs yet. Surface a
+    // one-line note instead of showing an empty chart.
+    empty.hidden = false;
+    empty.textContent = "Cost series not available — server predates per-day cost field. Autodeploy next cycle.";
+    canvas.style.display = "none";
+    byModelTable.setData(totals);
+    return;
   }
 
+  const families = new Set();
+  daily.forEach(d => Object.keys(d[seriesKey] || {}).forEach(k => families.add(k)));
+  const ordered = orderedFamilies(families);
+
+  // Build the raw per-family-per-day matrix once; distribution mode
+  // post-normalizes it to percentages. Lets us keep tooltip values
+  // readable even in distribution mode by stashing originals.
+  const rawByFamily = ordered.map(f => daily.map(d => Number((d[seriesKey] || {})[f] || 0)));
+
+  let datasets, yTitle, yMax, stacked, chartType, yTickCb, tooltipCb;
+  if (byModelState.chartType === "line") {
+    chartType = "line";
+    stacked = false;
+    yTitle = isCost ? "USD" : "Tokens";
+    datasets = ordered.map((f, i) => ({
+      label: f,
+      data: rawByFamily[i],
+      borderColor: modelColor(f),
+      backgroundColor: modelColor(f),
+      fill: false,
+      tension: 0.25,
+      pointRadius: 2,
+    }));
+    yTickCb = isCost ? v => fmt.usd(v) : v => fmt.num(v);
+    tooltipCb = ctx => `${ctx.dataset.label}: ${isCost ? fmt.usd(ctx.parsed.y) : fmt.num(ctx.parsed.y)}`;
+  } else if (byModelState.chartType === "distribution") {
+    chartType = "bar";
+    stacked = true;
+    yTitle = isCost ? "Cost share" : "Token share";
+    yMax = 100;
+    // Normalize per-column so each bar sums to 100%.
+    const colSums = daily.map((_, colIdx) => rawByFamily.reduce((s, row) => s + row[colIdx], 0));
+    datasets = ordered.map((f, i) => ({
+      label: f,
+      backgroundColor: modelColor(f),
+      data: rawByFamily[i].map((v, colIdx) => colSums[colIdx] > 0 ? (v / colSums[colIdx]) * 100 : 0),
+      // stash raw values for tooltip
+      _raw: rawByFamily[i],
+    }));
+    yTickCb = v => v + "%";
+    tooltipCb = ctx => {
+      const raw = (ctx.dataset._raw || [])[ctx.dataIndex] || 0;
+      const pct = ctx.parsed.y;
+      const rawFmt = isCost ? fmt.usd(raw) : fmt.num(raw);
+      return `${ctx.dataset.label}: ${pct.toFixed(1)}% (${rawFmt})`;
+    };
+  } else {
+    chartType = "bar";
+    stacked = true;
+    yTitle = isCost ? "USD" : "Tokens";
+    datasets = ordered.map((f, i) => ({
+      label: f,
+      backgroundColor: modelColor(f),
+      data: rawByFamily[i],
+    }));
+    yTickCb = isCost ? v => fmt.usd(v) : v => fmt.num(v);
+    tooltipCb = ctx => `${ctx.dataset.label}: ${isCost ? fmt.usd(ctx.parsed.y) : fmt.num(ctx.parsed.y)}`;
+  }
+
+  const opts = chartOpts({ stacked, yTitle });
+  // Patch in metric-aware tick + tooltip formatters.
+  opts.scales = opts.scales || {};
+  opts.scales.y = opts.scales.y || {};
+  opts.scales.y.ticks = Object.assign({}, opts.scales.y.ticks || {}, { callback: yTickCb });
+  if (yMax !== undefined) opts.scales.y.max = yMax;
+  opts.plugins = opts.plugins || {};
+  opts.plugins.tooltip = Object.assign({}, opts.plugins.tooltip || {}, { callbacks: { label: tooltipCb } });
+
+  charts.byModel = new Chart(canvas, {
+    type: chartType,
+    data: { labels: daily.map(d => fmtBucket(d.bucket, "day")), datasets },
+    options: opts,
+  });
+
   byModelTable.setData(totals);
+}
+
+// Wire the metric and chart-type segmented controls to re-render from
+// the cached payload. Called once from main(); idempotent via the
+// bymodelCtrlsInited flag.
+let bymodelCtrlsInited = false;
+function initByModelControls() {
+  if (bymodelCtrlsInited) return;
+  bymodelCtrlsInited = true;
+  const bindSeg = (containerId, dataAttr, stateKey) => {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    root.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-" + dataAttr + "]");
+      if (!btn) return;
+      const value = btn.dataset[dataAttr];
+      if (byModelState[stateKey] === value) return;
+      byModelState[stateKey] = value;
+      root.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+      renderByModel();
+    });
+  };
+  bindSeg("bymodel-metric", "metric", "metric");
+  bindSeg("bymodel-chart-type", "ctype", "chartType");
 }
 
 function renderHourly(buckets) {
@@ -2603,6 +2730,7 @@ async function main() {
         <td class="num">${fmt.usd(m.total_cost_usd)}</td>
       </tr>`,
   });
+  initByModelControls();
 
   projectsTable = makeSortableTable({
     tbodyId: "projects-body",
